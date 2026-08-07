@@ -1,0 +1,336 @@
+<!-- @dsCard group="App EJC" viewport="1280x860" name="App EJC — click-through" subtitle="Painel, Membros e Avaliações do EJC Califórnia" -->
+<!-- @startingPoint section="App EJC" subtitle="App de gestão do EJC (painel, membros, avaliações)" viewport="1280x860" -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App EJC Califórnia</title>
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  html,body{margin:0;height:100%}
+  body{background:linear-gradient(160deg,var(--bg-top) 0%,var(--bg) 55%);display:flex;align-items:center;justify-content:center;padding:22px}
+  svg.lucide{width:1em;height:1em;display:block;stroke-width:1.8}
+  #root{width:100%;max-width:1236px}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="appcode">
+const { useState, useEffect } = React;
+
+/* ---- Icon (Lucide) ---- */
+function Icon({ name, size = 20 }) {
+  return <span style={{ fontSize: size, display: "inline-flex" }}><i data-lucide={name}></i></span>;
+}
+function useLucide(dep){ useEffect(() => { if (window.lucide) window.lucide.createIcons(); }); }
+
+/* ---- primitives (mirror of the DS components) ---- */
+function IconButton({ variant="default", size=42, label, children, ...r }){
+  const v = variant==="dark" ? {background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}
+    : variant==="soft" ? {background:"var(--surface-2)",color:"var(--text-2)"}
+    : {background:"var(--surface)",color:"var(--text)",boxShadow:"var(--shadow-sm)"};
+  return <button aria-label={label} title={label} {...r} style={{width:size,height:size,borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",...v}}>{children}</button>;
+}
+function Button({ variant="primary", children, iconLeft, ...r }){
+  const v = variant==="secondary" ? {background:"var(--surface)",color:"var(--text)",boxShadow:"var(--shadow-sm)"}
+    : variant==="ghost" ? {background:"transparent",color:"var(--text-2)"}
+    : {background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"};
+  return <button {...r} style={{display:"inline-flex",alignItems:"center",gap:8,fontFamily:"var(--font-sans)",fontWeight:600,fontSize:14,padding:"10px 18px",borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",...v}}>{iconLeft}{children}</button>;
+}
+function Switch({ checked, onChange }){
+  return <button role="switch" aria-checked={checked} onClick={()=>onChange(!checked)} style={{width:50,height:30,borderRadius:99,border:"none",position:"relative",cursor:"pointer",padding:0,background:checked?"var(--brand-brown)":"var(--surface-3)",transition:"background .2s"}}>
+    <span style={{position:"absolute",top:3,left:checked?23:3,width:24,height:24,borderRadius:"50%",background:"#fff",boxShadow:"0 2px 6px rgba(74,46,26,.25)",transition:"left .2s"}}/>
+  </button>;
+}
+const TONES={neutral:["var(--surface-2)","var(--text-2)"],brand:["var(--brand-brown-soft)","var(--brand-brown)"],yellow:["var(--brand-yellow-soft)","var(--on-yellow)"],success:["var(--success-soft)","var(--success)"],warning:["var(--warning-soft)","var(--warning)"],danger:["var(--danger-soft)","var(--danger)"],info:["var(--info-soft)","var(--info)"]};
+function Badge({ tone="neutral", dot, children }){
+  const [bg,fg]=TONES[tone]||TONES.neutral;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:6,background:bg,color:fg,fontSize:12,fontWeight:600,padding:"5px 11px",borderRadius:99}}>{dot&&<span style={{width:6,height:6,borderRadius:"50%",background:"currentColor"}}/>}{children}</span>;
+}
+function Tag({ color="var(--cat-brown)", children }){
+  return <span style={{display:"inline-flex",alignItems:"center",gap:7,background:"var(--surface)",boxShadow:"var(--shadow-xs)",fontSize:13,fontWeight:500,color:"var(--text)",padding:"6px 12px",borderRadius:99}}><span style={{width:8,height:8,borderRadius:"50%",background:color}}/>{children}</span>;
+}
+function RatingBar({ value=0, size=18, showValue=true }){
+  const stars=[];for(let i=1;i<=5;i++){const fill=Math.max(0,Math.min(1,value-(i-1)));
+    stars.push(<span key={i} style={{position:"relative",fontSize:size,lineHeight:1,color:"var(--surface-3)"}}>★<span style={{position:"absolute",left:0,top:0,width:fill*100+"%",overflow:"hidden",color:"var(--brand-yellow)"}}>★</span></span>);}
+  return <span style={{display:"inline-flex",alignItems:"center",gap:8}}><span style={{display:"inline-flex",gap:2}}>{stars}</span>{showValue&&<span style={{fontWeight:700,fontSize:size*0.8,color:"var(--text)"}}>{value.toFixed(1)}</span>}</span>;
+}
+function ProgressBar({ value=0, color="var(--brand-brown)", label, showValue, height=10 }){
+  return <div style={{width:"100%"}}>{(label||showValue)&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:13}}>{label&&<span style={{color:"var(--text-2)",fontWeight:500}}>{label}</span>}{showValue&&<span style={{color:"var(--text)",fontWeight:700}}>{value}%</span>}</div>}
+    <div style={{height,borderRadius:99,background:"var(--surface-3)",overflow:"hidden"}}><div style={{width:value+"%",height:"100%",borderRadius:99,background:color}}/></div></div>;
+}
+function StatCard({ label, value, unit, delta, deltaTone="success", accent="var(--cat-brown)", icon }){
+  const tone=deltaTone==="success"?"var(--success)":deltaTone==="danger"?"var(--danger)":"var(--text-2)";
+  return <div style={{background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"var(--card-pad)",boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <span style={{fontSize:13,fontWeight:500,color:"var(--text-2)"}}>{label}</span>
+      <span style={{width:38,height:38,borderRadius:99,background:accent,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}><Icon name={icon} size={18}/></span>
+    </div>
+    <div style={{display:"flex",alignItems:"baseline",gap:6}}><span style={{fontSize:34,fontWeight:800,letterSpacing:"-.02em",lineHeight:1,color:"var(--text)"}}>{value}</span>{unit&&<span style={{fontSize:15,fontWeight:600,color:"var(--text-3)"}}>{unit}</span>}</div>
+    {delta&&<span style={{fontSize:13,fontWeight:600,color:tone}}>{delta}</span>}
+  </div>;
+}
+function Card({ title, subtitle, action, children, style, pad="var(--card-pad)" }){
+  return <section style={{background:"var(--surface)",borderRadius:"var(--r-lg)",boxShadow:"var(--shadow-sm)",padding:pad,...style}}>
+    {(title||action)&&<header style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12}}>
+      <div>{title&&<h3 style={{margin:0,fontSize:17,fontWeight:600,color:"var(--text)"}}>{title}</h3>}{subtitle&&<p style={{margin:"3px 0 0",fontSize:13,color:"var(--text-2)"}}>{subtitle}</p>}</div>{action}</header>}
+    {children}</section>;
+}
+function Avatar({ src, name="", size=44, ring, badge }){
+  const initials=name.split(" ").filter(Boolean).slice(0,2).map(n=>n[0]).join("").toUpperCase();
+  return <span style={{position:"relative",display:"inline-flex",flex:"0 0 auto"}}>
+    <span style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",background:"var(--brand-brown-soft)",color:"var(--brand-brown)",fontWeight:700,fontSize:size*0.36,boxShadow:ring?"0 0 0 3px var(--surface),0 0 0 5px var(--brand-yellow)":"var(--shadow-xs)"}}>{src?<img src={src} alt={name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initials}</span>
+    {badge!=null&&<span style={{position:"absolute",top:-2,right:-2,minWidth:18,height:18,padding:"0 5px",borderRadius:99,background:"var(--brand-red)",color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--surface)"}}>{badge}</span>}
+  </span>;
+}
+function ListRow({ icon, iconColor="var(--cat-brown)", avatar, title, subtitle, trailing, onClick }){
+  const [h,setH]=useState(false);
+  return <div onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{display:"flex",alignItems:"center",gap:14,background:h&&onClick?"var(--surface-3)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:onClick?"pointer":"default",transition:"background .15s"}}>
+    {avatar}
+    {icon&&!avatar&&<span style={{width:38,height:38,borderRadius:99,background:iconColor,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name={icon} size={18}/></span>}
+    <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:15,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</div>{subtitle&&<div style={{fontSize:13,color:"var(--text-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{subtitle}</div>}</div>
+    {trailing&&<div style={{flex:"0 0 auto",display:"flex",alignItems:"center",gap:10}}>{trailing}</div>}
+  </div>;
+}
+function SegmentedControl({ options, value, onChange, variant="pill" }){
+  const isPill=variant==="pill";
+  return <div style={{display:"inline-flex",alignItems:"center",gap:isPill?4:24,background:isPill?"var(--surface)":"transparent",borderRadius:99,padding:isPill?4:0,boxShadow:isPill?"var(--shadow-sm)":"none"}}>
+    {options.map(o=>{const active=o===value;return <button key={o} onClick={()=>onChange(o)} style={{border:"none",cursor:"pointer",fontSize:14,fontWeight:active?700:500,padding:isPill?"8px 16px":"4px 0",borderRadius:99,color:active?(isPill?"var(--on-brand)":"var(--text)"):"var(--text-2)",background:active&&isPill?"var(--brand-brown)":"transparent",borderBottom:!isPill?(active?"2px solid var(--brand-brown)":"2px solid transparent"):"none",transition:"all .15s"}}>{o}</button>;})}
+  </div>;
+}
+function SearchInput({ placeholder }){
+  return <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface)",borderRadius:99,padding:"11px 18px",boxShadow:"var(--shadow-sm)",minWidth:300,flex:1,maxWidth:440}}>
+    <span style={{color:"var(--text-3)",display:"inline-flex",fontSize:18}}><Icon name="search" size={18}/></span>
+    <input placeholder={placeholder} style={{border:"none",outline:"none",background:"transparent",flex:1,fontFamily:"var(--font-sans)",fontSize:14,color:"var(--text)"}}/>
+  </div>;
+}
+function Select({ label, value }){
+  return <button style={{display:"inline-flex",alignItems:"center",gap:8,borderRadius:99,border:"none",cursor:"pointer",padding:"10px 16px",fontSize:14,fontWeight:600,color:"var(--text)",background:"var(--surface)",boxShadow:"var(--shadow-sm)"}}>{label&&<span style={{color:"var(--text-3)",fontWeight:500}}>{label}</span>}<span>{value}</span><span style={{color:"var(--text-3)",display:"inline-flex",fontSize:15}}><Icon name="chevron-down" size={15}/></span></button>;
+}
+
+/* ---- data ---- */
+const CATS=[
+  {id:"membros",label:"Membros",count:"128 pessoas",icon:"users",color:"var(--cat-blue)"},
+  {id:"equipes",label:"Equipes",count:"9 equipes",icon:"layout-grid",color:"var(--cat-terracotta)"},
+  {id:"palestras",label:"Palestras",count:"12 palestras",icon:"mic",color:"var(--cat-plum)"},
+  {id:"presenca",label:"Presença",count:"Encontro 04",icon:"calendar-check",color:"var(--cat-olive)"},
+];
+const MEMBROS=[
+  {n:"Ana Beatriz Silva",e:"Coordenação",role:"Coordenadora",st:"ok",r:4.8},
+  {n:"João Pedro Alves",e:"Liturgia",role:"Tio",st:"pend",r:4.2,b:2},
+  {n:"Mariana Costa",e:"Acolhida",role:"Encontrista",st:"ok",r:4.6},
+  {n:"Lucas Fernandes",e:"Música",role:"Ministro",st:"ok",r:4.9},
+  {n:"Beatriz Rocha",e:"Cozinha",role:"Tia",st:"pend",r:3.9},
+  {n:"Rafael Souza",e:"Ordem",role:"Encontrista",st:"ok",r:4.1},
+];
+const EQUIPES=[
+  {n:"Liturgia",m:14,r:4.7,p:92,c:"var(--cat-terracotta)"},
+  {n:"Música",m:11,r:4.9,p:88,c:"var(--cat-plum)"},
+  {n:"Acolhida",m:9,r:4.4,p:78,c:"var(--cat-blue)"},
+  {n:"Cozinha",m:16,r:4.2,p:95,c:"var(--cat-olive)"},
+  {n:"Ordem",m:8,r:4.0,p:64,c:"var(--cat-brown)"},
+];
+const PALESTRAS=[
+  {n:"O Amor de Deus",p:"Pe. Antônio",r:4.9,v:42,c:"var(--cat-plum)"},
+  {n:"Reconciliação",p:"Ana Beatriz",r:4.6,v:40,c:"var(--cat-terracotta)"},
+  {n:"Vida em Comunidade",p:"Lucas Fernandes",r:4.3,v:38,c:"var(--cat-blue)"},
+  {n:"Chamado e Missão",p:"Mariana Costa",r:4.7,v:41,c:"var(--cat-olive)"},
+];
+const AVALS=[
+  {n:"Equipe Música",s:"Encontro 04 · palco",r:4.9},
+  {n:"Palestra: O Amor de Deus",s:"Pe. Antônio",r:4.9},
+  {n:"Equipe Liturgia",s:"Encontro 04",r:4.7},
+  {n:"Equipe Cozinha",s:"Almoço de sábado",r:4.2},
+];
+
+/* ---- screens ---- */
+function Header({ title, sub }){
+  return <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24,flexWrap:"wrap"}}>
+    <div style={{marginRight:"auto"}}>
+      <div className="mono-overline">EJC CALIFÓRNIA · BH</div>
+      <h1 style={{margin:"4px 0 0",fontSize:28,fontWeight:800,letterSpacing:"-.02em",color:"var(--text)"}}>{title}</h1>
+      {sub&&<p style={{margin:"4px 0 0",fontSize:14,color:"var(--text-2)"}}>{sub}</p>}
+    </div>
+    <SearchInput placeholder="Buscar membro, equipe ou palestra"/>
+    <IconButton label="Novo" variant="dark"><Icon name="plus"/></IconButton>
+    <IconButton label="Filtrar"><Icon name="sliders-horizontal"/></IconButton>
+    <IconButton label="Notificações"><Icon name="bell"/></IconButton>
+  </div>;
+}
+
+function Dashboard(){
+  return <div>
+    <Header title="Painel do EJC" sub="Sábado, 6 de setembro · Encontro 04 em andamento"/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:20}}>
+      <StatCard label="Membros ativos" value="128" delta="+6 esta semana" accent="var(--cat-blue)" icon="users"/>
+      <StatCard label="Presença hoje" value="94" unit="%" delta="+8% vs Enc. 03" accent="var(--cat-olive)" icon="calendar-check"/>
+      <StatCard label="Média das equipes" value="4.4" unit="/5" delta="+0.2" accent="var(--cat-terracotta)" icon="star"/>
+      <StatCard label="Palestras avaliadas" value="12" delta="3 pendentes" deltaTone="neutral" accent="var(--cat-plum)" icon="mic"/>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr",gap:20}}>
+      <div style={{display:"flex",flexDirection:"column",gap:20}}>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <h3 style={{margin:0,fontSize:17,fontWeight:600}}>Categorias</h3>
+            <span style={{fontSize:13,fontWeight:600,color:"var(--brand-brown)",cursor:"pointer"}}>Ver todas</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+            {CATS.map(c=>(
+              <div key={c.id} style={{background:"var(--surface)",borderRadius:"var(--r-lg)",padding:18,boxShadow:"var(--shadow-sm)",position:"relative",minHeight:118,display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+                <span style={{width:42,height:42,borderRadius:99,background:c.color,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name={c.icon} size={20}/></span>
+                <IconButton label="abrir" size={30} variant="soft" style={{position:"absolute",top:14,right:14}}><Icon name="arrow-up-right" size={16}/></IconButton>
+                <div><div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{c.label}</div><div style={{fontSize:12,color:"var(--text-2)",marginTop:2}}>{c.count}</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <Card title="Avaliações recentes" action={<Select value="Todas" />}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {AVALS.map((a,i)=><ListRow key={i} icon={i%2?"mic":"star"} iconColor={i%2?"var(--cat-plum)":"var(--cat-terracotta)"} title={a.n} subtitle={a.s} trailing={<RatingBar value={a.r} size={15}/>}/>)}
+          </div>
+        </Card>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:20}}>
+        <Card title="Ranking das equipes" subtitle="Média das avaliações">
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {EQUIPES.slice(0,5).map((e,i)=>(
+              <div key={e.n} style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{width:24,fontWeight:800,color:"var(--text-3)",fontSize:14}}>{i+1}</span>
+                <span style={{width:34,height:34,borderRadius:99,background:e.c,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:16}}><Icon name="layout-grid" size={16}/></span>
+                <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14}}>{e.n}</div><ProgressBar value={Math.round(e.r/5*100)} height={7} color={e.c}/></div>
+                <span style={{fontWeight:800,fontSize:15}}>{e.r.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card title="Próximo encontro">
+          <div style={{display:"flex",gap:14,alignItems:"center"}}>
+            <div style={{width:60,height:60,borderRadius:"var(--r-md)",background:"var(--brand-brown)",color:"var(--on-brand)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}>
+              <span style={{fontSize:20,fontWeight:800,lineHeight:1}}>13</span><span style={{fontSize:11}}>SET</span>
+            </div>
+            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>Encontrão — 3ª etapa</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>Paróquia Califórnia · 8h às 18h</div></div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:16}}><Button variant="primary">Confirmar equipe</Button><Button variant="secondary">Ver escala</Button></div>
+        </Card>
+      </div>
+    </div>
+  </div>;
+}
+
+function Membros(){
+  const [tab,setTab]=useState("Todos");
+  const list=MEMBROS.filter(m=>tab==="Todos"||(tab==="Confirmados"&&m.st==="ok")||(tab==="Pendentes"&&m.st==="pend"));
+  return <div>
+    <Header title="Membros" sub="128 membros em 9 equipes"/>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
+      <SegmentedControl options={["Todos","Confirmados","Pendentes"]} value={tab} onChange={setTab}/>
+      <div style={{display:"flex",gap:10}}><Select label="Equipe" value="Todas"/><Select label="Ordenar" value="Nome"/></div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      {list.map((m,i)=>(
+        <div key={i} style={{background:"var(--surface)",borderRadius:"var(--r-lg)",padding:16,boxShadow:"var(--shadow-sm)",display:"flex",alignItems:"center",gap:14}}>
+          <Avatar name={m.n} size={52} badge={m.b} ring={m.role==="Coordenadora"}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15,color:"var(--text)"}}>{m.n}</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}><Tag color="var(--cat-terracotta)">{m.e}</Tag><span style={{fontSize:12,color:"var(--text-2)"}}>{m.role}</span></div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+            <Badge tone={m.st==="ok"?"success":"warning"} dot>{m.st==="ok"?"Confirmado":"Pendente"}</Badge>
+            <RatingBar value={m.r} size={14}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+function Avaliacoes(){
+  const [tab,setTab]=useState("Equipes");
+  return <div>
+    <Header title="Avaliações" sub="Encontro 04 · média geral 4.4"/>
+    <div style={{marginBottom:20}}><SegmentedControl variant="pill" options={["Equipes","Palestras"]} value={tab} onChange={setTab}/></div>
+    {tab==="Equipes" ? (
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {EQUIPES.map(e=>(
+          <Card key={e.n} pad="18px">
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+              <span style={{width:44,height:44,borderRadius:99,background:e.c,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name="layout-grid" size={20}/></span>
+              <div style={{flex:1}}><div style={{fontWeight:700,fontSize:16}}>Equipe {e.n}</div><div style={{fontSize:13,color:"var(--text-2)"}}>{e.m} membros</div></div>
+              <RatingBar value={e.r} size={16}/>
+            </div>
+            <ProgressBar value={e.p} label="Presença nos ensaios" showValue color={e.c}/>
+          </Card>
+        ))}
+      </div>
+    ) : (
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {PALESTRAS.map(p=>(
+          <Card key={p.n} pad="18px">
+            <div style={{display:"flex",alignItems:"flex-start",gap:14}}>
+              <span style={{width:46,height:46,borderRadius:"var(--r-md)",background:p.c,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20,flex:"0 0 auto"}}><Icon name="mic" size={20}/></span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:16}}>{p.n}</div>
+                <div style={{fontSize:13,color:"var(--text-2)",marginBottom:12}}>{p.p}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <RatingBar value={p.r} size={16}/>
+                  <Badge tone="info">{p.v} avaliações</Badge>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    )}
+  </div>;
+}
+
+/* ---- shell ---- */
+const NAV=[
+  {id:"dash",label:"Painel",icon:"layout-dashboard"},
+  {id:"membros",label:"Membros",icon:"users",badge:3},
+  {id:"equipes",label:"Equipes",icon:"layout-grid"},
+  {id:"aval",label:"Avaliações",icon:"star"},
+  {id:"agenda",label:"Agenda",icon:"calendar"},
+];
+function App(){
+  const [view,setView]=useState("dash");
+  useLucide(view);
+  const screen = view==="membros"?<Membros/>:view==="aval"?<Avaliacoes/>:<Dashboard/>;
+  return (
+    <div style={{display:"flex",gap:18,height:816}}>
+      <nav style={{width:"var(--rail-w)",background:"var(--surface)",borderRadius:"var(--r-2xl)",boxShadow:"var(--shadow-rail)",padding:"16px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:6,flex:"0 0 auto"}}>
+        <span style={{width:48,height:48,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14,boxShadow:"var(--shadow-xs)"}}>
+          <img src="../../assets/ejc-logo.png" alt="EJC" style={{width:"88%",height:"88%",objectFit:"contain"}}/>
+        </span>
+        <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+          {NAV.map(it=>{const active=(it.id==="dash"&&view==="dash")||it.id===view||(it.id==="equipes"&&view==="aval"&&false);const on=it.id===view||(view==="dash"&&it.id==="dash");
+            return <button key={it.id} title={it.label} onClick={()=>setView(it.id==="equipes"||it.id==="agenda"?view:it.id)} style={{position:"relative",width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20,background:on?"var(--brand-brown)":"transparent",color:on?"var(--on-brand)":"var(--text-2)",transition:"all .15s"}}>
+              <Icon name={it.icon} size={20}/>
+              {it.badge!=null&&<span style={{position:"absolute",top:4,right:4,minWidth:16,height:16,padding:"0 4px",borderRadius:99,background:"var(--brand-red)",color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{it.badge}</span>}
+            </button>;})}
+        </div>
+        <button title="Ajustes" style={{width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",background:"transparent",color:"var(--text-2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name="settings" size={20}/></button>
+        <Avatar name="Você" size={44}/>
+      </nav>
+      <main style={{flex:1,minWidth:0,background:"var(--surface-2)",borderRadius:"var(--r-2xl)",padding:"28px 30px",overflow:"auto"}}>{screen}</main>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>
+  (function(){
+    const src = document.getElementById("appcode").textContent;
+    const out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+    (0, eval)(out);
+  })();
+</script>
+</body>
+</html>

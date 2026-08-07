@@ -1,0 +1,26 @@
+<!-- @dsCard group="Components" viewport="700x560" name="Nav rail" subtitle="Rail lateral do app com logo, itens e avatar" -->
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:var(--bg)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel" data-presets="react">
+const NS = window.__DS__ || Object.values(window).find(o => o && o.NavRail) || window;
+const { NavRail, Avatar } = NS;
+function Demo(){
+  const [v,setV]=React.useState("dash");
+  const items=[
+    {id:"dash",label:"Início",icon:"⌂"},
+    {id:"membros",label:"Membros",icon:"☺",badge:3},
+    {id:"equipes",label:"Equipes",icon:"❖"},
+    {id:"aval",label:"Avaliações",icon:"★"},
+    {id:"dash2",label:"Dashboards",icon:"◧"},
+  ];
+  return <NavRail logoSrc="../../assets/ejc-logo.png" items={items} activeId={v} onSelect={setV} footer={<Avatar name="Você" size="md"/>} style={{height:500}}/>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body></html>

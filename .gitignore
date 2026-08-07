@@ -1,0 +1,15 @@
+# dependências
+node_modules/
+
+# config local de desenvolvimento
+.claude/
+
+# arquivo compactado redundante (a versão extraída está em design_system_unzip/)
+Design system EJC Califórnia.zip
+
+# sistema operacional
+.DS_Store
+Thumbs.db
+
+# temporários
+*.log

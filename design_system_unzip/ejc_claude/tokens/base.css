@@ -1,0 +1,26 @@
+/* Minimal resets + canvas defaults. Foundation cards and kits link styles.css. */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 46%);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--brand-brown); text-decoration: none; }
+a:hover { color: var(--color-primary-hover); text-decoration: underline; }
+
+.mono-overline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-overline);
+  letter-spacing: var(--ls-overline);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+::selection { background: var(--brand-yellow-soft); }

@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Dados & avaliação" subtitle="StatCard · RatingBar · ProgressBar · Badge · Tag" -->
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:var(--bg)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel" data-presets="react">
+const NS = window.__DS__ || Object.values(window).find(o => o && o.StatCard && o.RatingBar) || window;
+const { StatCard, RatingBar, ProgressBar, Badge, Tag } = NS;
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <div style={{display:'flex',flexDirection:'column',gap:18}}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
+      <StatCard label="Membros ativos" value="128" delta="+6 esta semana" accent="var(--cat-blue)" icon="♦"/>
+      <StatCard label="Média das equipes" value="4.4" unit="/5" delta="+0.2" accent="var(--cat-olive)" icon="★"/>
+      <StatCard label="Faltas hoje" value="7" delta="-3 vs ontem" deltaTone="danger" accent="var(--cat-red)" icon="!"/>
+    </div>
+    <div style={{display:'flex',gap:22,alignItems:'center',flexWrap:'wrap'}}>
+      <RatingBar value={4.3}/>
+      <RatingBar value={3.0}/>
+      <RatingBar value={5.0}/>
+    </div>
+    <ProgressBar value={72} label="Presença confirmada" showValue color="var(--cat-olive)"/>
+    <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+      <Badge tone="success" dot>Confirmado</Badge>
+      <Badge tone="warning" dot>Pendente</Badge>
+      <Badge tone="brand">Coordenador</Badge>
+      <Badge tone="info">Tiozão</Badge>
+      <Tag color="var(--cat-terracotta)">Equipe Liturgia</Tag>
+      <Tag color="var(--cat-plum)">Equipe Música</Tag>
+    </div>
+  </div>
+);
+</script>
+</body></html>

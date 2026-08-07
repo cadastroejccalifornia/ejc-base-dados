@@ -1,0 +1,56 @@
+:root {
+  /* ---- Brand (from EJC Califórnia logo) ---- */
+  --brand-brown: #784230;        /* the cross — primary brand color */
+  --brand-brown-deep: #5a3122;   /* pressed / deep contexts */
+  --brand-brown-soft: #f0e6df;   /* tinted surface / hover on brown */
+  --brand-yellow: #f5ce1b;       /* EJC letters, toned for UI legibility */
+  --brand-yellow-vivid: #ffe21a; /* logo-accurate yellow, use on dark only */
+  --brand-yellow-soft: #fbf3cf;
+  --brand-red: #d8342b;          /* letter outline — alerts / emphasis */
+  --brand-red-soft: #f8dedb;
+
+  /* ---- Warm neutrals (surfaces & text) ---- */
+  --bg: #f2eee7;                 /* app canvas, warm cream */
+  --bg-top: #efeaf1;             /* subtle lavender-warm top of canvas gradient */
+  --surface: #ffffff;            /* cards */
+  --surface-2: #f7f4ef;          /* soft pill rows, insets */
+  --surface-3: #efe9e1;          /* pressed inset */
+  --hairline: #ece6dd;           /* 1px separators / card borders */
+
+  --text: #2a241f;              /* near-black warm */
+  --text-2: #6e655c;            /* secondary */
+  --text-3: #a69d92;            /* muted / placeholder */
+  --on-brand: #fffaf3;          /* text on brown/red */
+  --on-yellow: #4a2e12;         /* text on yellow */
+
+  /* ---- Category / accent circles (harmonized warm set) ---- */
+  --cat-yellow: #f5ce1b;
+  --cat-terracotta: #e07a47;
+  --cat-red: #d8342b;
+  --cat-brown: #8a5a38;
+  --cat-olive: #7f8b3a;
+  --cat-blue: #4c7bd9;
+  --cat-plum: #7a4b63;
+
+  /* ---- Semantic ---- */
+  --success: #4b915e;
+  --success-soft: #e0efe3;
+  --warning: #e0912f;
+  --warning-soft: #fbeed7;
+  --danger: #d8342b;
+  --danger-soft: #f8dedb;
+  --info: #4c7bd9;
+  --info-soft: #e2e9f8;
+
+  /* ---- Semantic aliases (use these in components) ---- */
+  --color-primary: var(--brand-brown);
+  --color-primary-hover: #6a3a2a;
+  --color-primary-press: var(--brand-brown-deep);
+  --color-accent: var(--brand-yellow);
+  --surface-card: var(--surface);
+  --surface-inset: var(--surface-2);
+  --text-body: var(--text);
+  --text-muted: var(--text-2);
+  --border-hairline: var(--hairline);
+  --focus-ring: color-mix(in oklch, var(--brand-brown) 45%, transparent);
+}

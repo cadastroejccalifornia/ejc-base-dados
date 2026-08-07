@@ -1,0 +1,35 @@
+:root {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* weights */
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+
+  /* type scale (px) — dashboard-oriented */
+  --fs-display: 40px;   /* screen hero numbers */
+  --fs-h1: 30px;
+  --fs-h2: 24px;
+  --fs-h3: 19px;
+  --fs-title: 17px;     /* card titles */
+  --fs-body: 15px;
+  --fs-sm: 13px;
+  --fs-xs: 12px;
+  --fs-overline: 11px;  /* mono overlines */
+
+  --lh-tight: 1.1;
+  --lh-snug: 1.28;
+  --lh-body: 1.5;
+
+  --ls-tight: -0.02em;
+  --ls-overline: 0.14em;
+
+  /* aliases */
+  --text-display: var(--fw-extrabold) var(--fs-display)/var(--lh-tight) var(--font-sans);
+  --text-h2: var(--fw-bold) var(--fs-h2)/var(--lh-snug) var(--font-sans);
+  --text-card-title: var(--fw-semibold) var(--fs-title)/var(--lh-snug) var(--font-sans);
+}

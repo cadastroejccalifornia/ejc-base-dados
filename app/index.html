@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Base de Dados EJC Califórnia</title>
+<link rel="stylesheet" href="../design_system_unzip/ejc_claude/styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  html,body{margin:0;height:100%}
+  html,body{min-height:100%}
+  body{background:linear-gradient(160deg,var(--bg-top) 0%,var(--bg) 55%);display:flex;align-items:flex-start;justify-content:center;padding:22px}
+  svg.lucide{width:1em;height:1em;display:block;stroke-width:1.8}
+  #root{width:100%;max-width:1300px}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px}
+  input::placeholder{color:var(--text-3)}
+  @media (max-width: 760px){
+    body{padding:0}
+    input,select,textarea{font-size:16px !important} /* evita zoom automático no iOS */
+    .hide-mobile{display:none !important}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="appcode">
+const { useState, useEffect, useRef } = React;
+
+/* ---------- responsividade ---------- */
+function useIsMobile(bp=760){
+  const [m,setM]=useState(typeof window!=="undefined" && window.innerWidth<bp);
+  useEffect(()=>{
+    const on=()=>setM(window.innerWidth<bp);
+    on();
+    window.addEventListener("resize",on);
+    return ()=>window.removeEventListener("resize",on);
+  },[bp]);
+  return m;
+}
+
+/* ---------- Icon ---------- */
+function Icon({ name, size = 20 }) {
+  return <span style={{ fontSize: size, display: "inline-flex" }}><i data-lucide={name}></i></span>;
+}
+function useLucide(){ useEffect(() => { if (window.lucide) window.lucide.createIcons(); }); }
+
+/* ---------- primitives (mirror of the DS components) ---------- */
+function IconButton({ variant="default", size=42, label, children, ...r }){
+  const v = variant==="dark" ? {background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}
+    : variant==="soft" ? {background:"var(--surface-2)",color:"var(--text-2)"}
+    : {background:"var(--surface)",color:"var(--text)",boxShadow:"var(--shadow-sm)"};
+  return <button aria-label={label} title={label} {...r} style={{width:size,height:size,borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",...v}}>{children}</button>;
+}
+function Button({ variant="primary", children, iconLeft, style, ...r }){
+  const v = variant==="secondary" ? {background:"var(--surface)",color:"var(--text)",boxShadow:"var(--shadow-sm)"}
+    : variant==="ghost" ? {background:"transparent",color:"var(--text-2)"}
+    : {background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"};
+  return <button {...r} style={{display:"inline-flex",alignItems:"center",gap:8,fontFamily:"var(--font-sans)",fontWeight:600,fontSize:14,padding:"10px 18px",borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",...v,...style}}>{iconLeft}{children}</button>;
+}
+const TONES={neutral:["var(--surface-2)","var(--text-2)"],brand:["var(--brand-brown-soft)","var(--brand-brown)"],yellow:["var(--brand-yellow-soft)","var(--on-yellow)"],success:["var(--success-soft)","var(--success)"],warning:["var(--warning-soft)","var(--warning)"],danger:["var(--danger-soft)","var(--danger)"],info:["var(--info-soft)","var(--info)"]};
+function Badge({ tone="neutral", dot, children }){
+  const [bg,fg]=TONES[tone]||TONES.neutral;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:6,background:bg,color:fg,fontSize:12,fontWeight:600,padding:"5px 11px",borderRadius:99,whiteSpace:"nowrap"}}>{dot&&<span style={{width:6,height:6,borderRadius:"50%",background:"currentColor"}}/>}{children}</span>;
+}
+function Tag({ color="var(--cat-brown)", children }){
+  return <span style={{display:"inline-flex",alignItems:"center",gap:7,background:"var(--surface-2)",fontSize:13,fontWeight:500,color:"var(--text)",padding:"5px 11px",borderRadius:99,whiteSpace:"nowrap"}}><span style={{width:8,height:8,borderRadius:"50%",background:color}}/>{children}</span>;
+}
+function Avatar({ src, name="", size=44, ring }){
+  const initials=name.split(" ").filter(Boolean).slice(0,2).map(n=>n[0]).join("").toUpperCase();
+  return <span style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",background:"var(--brand-brown-soft)",color:"var(--brand-brown)",fontWeight:700,fontSize:size*0.36,flex:"0 0 auto",boxShadow:ring?"0 0 0 3px var(--surface),0 0 0 5px var(--brand-yellow)":"var(--shadow-xs)"}}>{src?<img src={src} alt={name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initials}</span>;
+}
+function Card({ title, subtitle, action, children, style, pad="var(--card-pad)" }){
+  return <section style={{background:"var(--surface)",borderRadius:"var(--r-lg)",boxShadow:"var(--shadow-sm)",padding:pad,...style}}>
+    {(title||action)&&<header style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12}}>
+      <div>{title&&<h3 style={{margin:0,fontSize:17,fontWeight:600,color:"var(--text)"}}>{title}</h3>}{subtitle&&<p style={{margin:"3px 0 0",fontSize:13,color:"var(--text-2)"}}>{subtitle}</p>}</div>{action}</header>}
+    {children}</section>;
+}
+function SearchInput({ placeholder, value, onChange, autoFocus, minWidth=200, maxWidth=440 }){
+  return <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface)",borderRadius:99,padding:"11px 18px",boxShadow:"var(--shadow-sm)",minWidth,flex:1,maxWidth}}>
+    <span style={{color:"var(--text-3)",display:"inline-flex",fontSize:18}}><Icon name="search" size={18}/></span>
+    <input autoFocus={autoFocus} value={value} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} style={{border:"none",outline:"none",background:"transparent",flex:1,fontFamily:"var(--font-sans)",fontSize:14,color:"var(--text)"}}/>
+  </div>;
+}
+function Select({ label, value }){
+  return <button style={{display:"inline-flex",alignItems:"center",gap:8,borderRadius:99,border:"none",cursor:"pointer",padding:"10px 16px",fontSize:14,fontWeight:600,color:"var(--text)",background:"var(--surface)",boxShadow:"var(--shadow-sm)"}}>{label&&<span style={{color:"var(--text-3)",fontWeight:500}}>{label}</span>}<span>{value}</span><span style={{color:"var(--text-3)",display:"inline-flex",fontSize:15}}><Icon name="chevron-down" size={15}/></span></button>;
+}
+function StatusDot({ active }){
+  return <Badge tone={active?"success":"neutral"} dot>{active?"Ativo":"Inativo"}</Badge>;
+}
+
+/* ---------- domain data ---------- */
+const MJC_TEAMS=["Ficha","Montagem","Finanças","Palestra","Pós"];
+const MJC_ICON={"Ficha":"clipboard-list","Montagem":"layout-grid","Finanças":"wallet","Palestra":"mic","Pós":"sparkles"};
+const MJC_COLOR={"Ficha":"var(--cat-blue)","Montagem":"var(--cat-terracotta)","Finanças":"var(--cat-olive)","Palestra":"var(--cat-plum)","Pós":"var(--cat-yellow)"};
+
+// tabs de montagem: Coordenação Geral, Sala, Compras, depois o resto em ordem alfabética
+const MONTAGEM_TABS=["Coordenação Geral","Sala","Compras","Acolhida","Cafezinho","Cozinha","Liturgia Externa","Liturgia Interna","Moita","Ordem e Limpeza","Recepção ao Palestrante","Secretaria","Tios Circulistas","Visitação Externa"];
+
+const EJC_YEARS=["XXXI EJC (2026)","XXX EJC (2025)","XXIX EJC (2024)","XXVIII EJC (2023)","XXVII EJC (2022)","XXVI EJC (2019)"];
+
+const mjcColor = t => MJC_COLOR[t] || "var(--cat-brown)";
+
+// ---------- Supabase (banco + autenticação reais) ----------
+const supabase = window.supabase.createClient(
+  "https://lmxepyuclguashzafzak.supabase.co",
+  "sb_publishable_cz1KBhLLi2GuflJ7QfMgCw_di_8f2Ol"
+);
+
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const StoreContext=React.createContext(null);
+const useStore=()=>React.useContext(StoreContext);
+
+// ---------- mapeamento: linha do banco <-> forma usada nas telas ----------
+function rowToJovem(r){
+  return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, mjc:r.mjc, ejc:r.ejc, end:r.endereco, inst:r.instrumento, ativo:r.ativo, ficha:r.ficha };
+}
+function jovemToRow(j){
+  const row={ nome:j.n, telefone:j.tel, mjc:j.mjc, ejc:j.ejc, endereco:j.end, instrumento:j.inst, ativo:j.ativo, ficha:j.ficha };
+  if(j.user_id) row.user_id=j.user_id;
+  return row;
+}
+function rowToTio(r){ return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, ejc:r.ejc, end:r.endereco, ativo:r.ativo }; }
+function tioToRow(t){ return { nome:t.n, telefone:t.tel, ejc:t.ejc, endereco:t.end, ativo:t.ativo }; }
+function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
+function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
+function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
+function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
+
+// campos-resumo derivados da ficha
+function fichaToFields(f){
+  const mjc = f.mjcAtual && f.mjcAtual!=="Não estou em nenhuma" ? f.mjcAtual : "—";
+  const ejc = f.fezCalifornia ? (f.anoEjc||"—") : (f.qualEjc||"—");
+  const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
+  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:f.endereco||"—", inst, ficha:f };
+}
+// converte a Ficha preenchida numa nova linha da base
+function formToJovem(f){
+  return { ativo:true, ...fichaToFields(f) };
+}
+
+/* ---------- autenticação (Supabase Auth) ----------
+   O papel (admin/membro) é resolvido consultando a tabela `dirigentes`: existe linha com
+   user_id = auth.uid() → é dirigente (admin); senão é membro e só enxerga a própria linha
+   em `jovens` (garantido pelas políticas de RLS no banco, não só pela UI). */
+const Auth={
+  async login(email,senha){
+    const { error } = await supabase.auth.signInWithPassword({ email:(email||"").trim(), password:senha });
+    if(error) return { ok:false, error: /invalid login credentials/i.test(error.message) ? "E-mail ou senha incorretos." : error.message };
+    return { ok:true };
+  },
+  async signup(email,senha){
+    const { data, error } = await supabase.auth.signUp({ email:(email||"").trim(), password:senha });
+    if(error) return { ok:false, error: /already registered|already exists/i.test(error.message) ? "Este e-mail já tem conta. Faça login." : error.message };
+    return { ok:true, needsConfirm: !data.session };
+  },
+  async logout(){ await supabase.auth.signOut(); },
+};
+
+function StoreProvider({ user, children }){
+  const [jovens,setJovens]=useState([]);
+  const [tios,setTios]=useState([]);
+  const [montagens,setMontagens]=useState([]);
+  const [formularios,setFormularios]=useState([]);
+  const [dirigentes,setDirigentes]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const isAdmin = user.role==="admin";
+
+  useEffect(()=>{
+    let active=true;
+    (async ()=>{
+      setLoading(true);
+      const [jRes,tRes,mRes,fRes,dRes] = await Promise.all([
+        supabase.from("jovens").select("*").order("created_at",{ascending:false}),
+        isAdmin ? supabase.from("tios").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
+        isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
+        supabase.from("formularios").select("*"),
+        isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
+      ]);
+      if(!active) return;
+      setJovens((jRes.data||[]).map(rowToJovem));
+      setTios((tRes.data||[]).map(rowToTio));
+      setMontagens((mRes.data||[]).map(rowToMontagem));
+      setFormularios((fRes.data||[]).map(rowToForm));
+      setDirigentes((dRes.data||[]).map(rowToDirigente));
+      setLoading(false);
+    })();
+    return ()=>{ active=false; };
+  },[user.id]);
+
+  const api={
+    jovens, tios, montagens, formularios, dirigentes, loading,
+    addJovem: async (j)=>{
+      const { data, error } = await supabase.from("jovens").insert(jovemToRow(j)).select().single();
+      if(!error) setJovens(l=>[rowToJovem(data),...l]);
+      return { data: data?rowToJovem(data):null, error };
+    },
+    updateJovem: async (id,patch)=>{
+      const { data, error } = await supabase.from("jovens").update(jovemToRow(patch)).eq("id",id).select().single();
+      if(!error) setJovens(l=>l.map(j=>j.id===id?rowToJovem(data):j));
+      return { data: data?rowToJovem(data):null, error };
+    },
+    addDirigente: async (d)=>{
+      const { data, error } = await supabase.from("dirigentes").insert({ nome:d.nome, email:d.email, cargo:d.cargo, user_id:d.user_id }).select().single();
+      if(!error) setDirigentes(l=>[...l,rowToDirigente(data)]);
+      return { data: data?rowToDirigente(data):null, error };
+    },
+    removeDirigente: async (id)=>{
+      const { error } = await supabase.from("dirigentes").delete().eq("id",id);
+      if(!error) setDirigentes(l=>l.filter(d=>d.id!==id));
+      return { error };
+    },
+    addMontagem: async (m)=>{
+      const { data, error } = await supabase.from("montagens").insert(montagemToRow(m)).select().single();
+      if(error) return null;
+      const row=rowToMontagem(data); setMontagens(l=>[row,...l]); return row;
+    },
+    setMontagemCell: async (montId,tab,rowKey,person)=>{
+      const m=montagens.find(x=>x.id===montId); if(!m) return;
+      const newCells={...m.cells,[tab]:{...(m.cells[tab]||{}),[rowKey]:person}};
+      const { data, error } = await supabase.from("montagens").update({cells:newCells}).eq("id",montId).select().single();
+      if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
+    },
+    addForm: async (f)=>{
+      const { data, error } = await supabase.from("formularios").insert({ nome:f.nome, favorito:false, sistema:false, campos:f.campos||[] }).select().single();
+      if(!error) setFormularios(l=>[...l,rowToForm(data)]);
+    },
+    updateForm: async (id,patch)=>{
+      const { data, error } = await supabase.from("formularios").update({ nome:patch.nome, campos:patch.campos }).eq("id",id).select().single();
+      if(!error) setFormularios(l=>l.map(f=>f.id===id?rowToForm(data):f));
+    },
+    deleteForm: async (id)=>{
+      const { error } = await supabase.from("formularios").delete().eq("id",id);
+      if(!error) setFormularios(l=>l.filter(f=>f.id!==id));
+    },
+    setFavorito: async (id)=>{
+      setFormularios(l=>l.map(f=>({...f,favorito:f.id===id})));
+      await supabase.from("formularios").update({favorito:false}).neq("id",id);
+      await supabase.from("formularios").update({favorito:true}).eq("id",id);
+    },
+  };
+  return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;
+}
+
+/* ======================================================================
+   HEADER
+   ====================================================================== */
+function Header({ title, sub, right }){
+  return <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24,flexWrap:"wrap"}}>
+    <div style={{marginRight:"auto"}}>
+      <div className="mono-overline">EJC CALIFÓRNIA · BH</div>
+      <h1 style={{margin:"4px 0 0",fontSize:28,fontWeight:800,letterSpacing:"-.02em",color:"var(--text)"}}>{title}</h1>
+      {sub&&<p style={{margin:"4px 0 0",fontSize:14,color:"var(--text-2)"}}>{sub}</p>}
+    </div>
+    {right}
+  </div>;
+}
+
+/* ======================================================================
+   INÍCIO (página principal)
+   ====================================================================== */
+function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
+  const { jovens } = useStore();
+  const ultimos = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
+  const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t&&j.ativo).length;return o;},{});
+  const totalAtivos = jovens.filter(j=>j.ativo).length;
+  return <div>
+    <Header title="Início" sub="Visão geral da base de dados do MJC"
+      right={<><SearchInput placeholder="Buscar pessoa..." maxWidth={360}/>
+        <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>Cadastrar pessoa</Button></>}/>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
+      {/* Últimos 3 cadastros */}
+      <Card title="Últimos cadastros" subtitle="As 3 pessoas mais recentes" action={<Select value="Ver todos"/>}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {ultimos.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
+          {ultimos.map((p,i)=>(
+            <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
+              <Avatar name={p.n} size={48}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{p.n}<Icon name="chevron-right" size={15}/></div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{p.tel}</span>
+                  <Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>
+                </div>
+              </div>
+              <StatusDot active={p.ativo}/>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Quantidade por equipe do MJC */}
+      <Card title="Pessoas por equipe do MJC">
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {MJC_TEAMS.map(t=>(
+            <div key={t} onClick={()=>onOpenTeam&&onOpenTeam(t)} title={"Ver jovens da equipe "+t} style={{display:"flex",alignItems:"center",gap:12,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 14px",cursor:"pointer"}}>
+              <span style={{width:38,height:38,borderRadius:99,background:MJC_COLOR[t],color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name={MJC_ICON[t]} size={18}/></span>
+              <div style={{flex:1,fontWeight:600,fontSize:15}}>{t}</div>
+              <span style={{fontWeight:800,fontSize:20,letterSpacing:"-.02em"}}>{counts[t]}</span>
+              <Icon name="chevron-right" size={16}/>
+            </div>
+          ))}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 6px 0",borderTop:"1px solid var(--hairline)",marginTop:4}}>
+            <span style={{fontSize:13,color:"var(--text-2)",fontWeight:600}}>Total ativos</span>
+            <span style={{fontWeight:800,fontSize:18}}>{totalAtivos}</span>
+          </div>
+        </div>
+      </Card>
+    </div>
+  </div>;
+}
+
+/* ======================================================================
+   JOVENS (tabela)
+   ====================================================================== */
+function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onClearTeam }){
+  const [q,setQ]=useState("");
+  const team = teamFilter||null;
+  const list=rows.filter(r=>r.n.toLowerCase().includes(q.toLowerCase()) && (!team || r.mjc===team));
+  const cols = kind==="jovem"
+    ? ["","Nome","Telefone","Equipe do MJC","EJC que fez","Status"]
+    : ["","Casal","Telefone","Vínculo","Endereço","Status"];
+  return <Card pad="0" style={{overflow:"hidden"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",flexWrap:"wrap"}}>
+      <SearchInput placeholder={kind==="jovem"?"Buscar jovem...":"Buscar casal..."} value={q} onChange={setQ} maxWidth={340}/>
+      {kind==="jovem" && team
+        ? <button onClick={onClearTeam} title="Limpar filtro" style={{display:"inline-flex",alignItems:"center",gap:8,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:14,fontWeight:600,padding:"9px 14px",borderRadius:"var(--r-pill)",background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}}><span style={{color:"var(--brand-yellow-soft)",fontWeight:500}}>Equipe:</span> {team} <Icon name="x" size={15}/></button>
+        : <Select label="Equipe" value="Todas"/>}
+      <Select label="Status" value="Todos"/>
+      <div style={{marginLeft:"auto"}}>
+        <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>{kind==="jovem"?"Adicionar jovem":"Adicionar casal"}</Button>
+      </div>
+    </div>
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+        <thead>
+          <tr style={{textAlign:"left"}}>
+            {cols.map((c,i)=><th key={i} style={{padding:"12px 18px",fontSize:12,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",background:"var(--surface-2)",whiteSpace:"nowrap"}}>{c}</th>)}
+            <th style={{background:"var(--surface-2)"}}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((r,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid var(--hairline)"}}>
+              <td style={{padding:"10px 18px"}}><Avatar name={r.n} size={38}/></td>
+              <td style={{padding:"10px 18px",fontWeight:600,whiteSpace:"nowrap"}}>
+                <button onClick={()=>onOpenPerson&&onOpenPerson(r)} title="Ver ficha completa" style={{border:"none",background:"transparent",cursor:"pointer",font:"inherit",fontWeight:600,color:"var(--brand-brown)",padding:0,display:"inline-flex",alignItems:"center",gap:5}}>{r.n}</button>
+              </td>
+              <td style={{padding:"10px 18px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{r.tel}</td>
+              <td style={{padding:"10px 18px"}}>{kind==="jovem"?<Tag color={mjcColor(r.mjc)}>{r.mjc}</Tag>:<span style={{color:"var(--text-2)"}}>{r.ejc}</span>}</td>
+              <td style={{padding:"10px 18px",color:"var(--text-2)",whiteSpace:"nowrap",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis"}}>{kind==="jovem"?r.ejc:r.end}</td>
+              <td style={{padding:"10px 18px"}}><StatusDot active={r.ativo}/></td>
+              <td style={{padding:"10px 18px"}}><IconButton label="Ver ficha" size={34} variant="soft" onClick={()=>onOpenPerson&&onOpenPerson(r)}><Icon name="chevron-right" size={16}/></IconButton></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    {list.length===0 && <div style={{padding:"40px",textAlign:"center",color:"var(--text-3)"}}>{q?('Nenhum resultado para "'+q+'".'):team?("Ninguém na equipe "+team+" ainda."):"Nenhum cadastro ainda."}</div>}
+  </Card>;
+}
+function Jovens({ onNovo, onOpenPerson, teamFilter, onClearTeam }){
+  const { jovens } = useStore();
+  const sub = teamFilter
+    ? jovens.filter(j=>j.mjc===teamFilter).length+" jovens na equipe "+teamFilter
+    : jovens.length+" jovens cadastrados";
+  return <div>
+    <Header title="Jovens" sub={sub}/>
+    <PeopleTable rows={jovens} onNovo={onNovo} kind="jovem" onOpenPerson={onOpenPerson} teamFilter={teamFilter} onClearTeam={onClearTeam}/>
+  </div>;
+}
+function Tios({ onNovo, onOpenPerson }){
+  const { tios } = useStore();
+  return <div>
+    <Header title="Tios" sub={tios.length+" casais cadastrados"}/>
+    <PeopleTable rows={tios} onNovo={onNovo} kind="tio" onOpenPerson={onOpenPerson}/>
+  </div>;
+}
+
+/* ======================================================================
+   MONTAGEM
+   ====================================================================== */
+// estrutura de linhas da planilha
+const ROW_SECTIONS=[
+  {label:"Jovens coordenadores",count:2,tone:"var(--brand-brown)",kind:"jovem"},
+  {label:"Tios coordenadores",count:2,tone:"var(--cat-plum)",kind:"casal"},
+  {label:"Tios apoio",count:3,tone:"var(--cat-terracotta)",kind:"casal"},
+  {label:"Jovens integrantes",count:25,tone:"var(--cat-blue)",kind:"jovem"},
+];
+
+function AddPersonCell({ pool, onPick }){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  const results=pool.filter(p=>p.n.toLowerCase().includes(q.toLowerCase())).slice(0,5);
+  if(!open) return <button onClick={()=>setOpen(true)} style={{display:"inline-flex",alignItems:"center",gap:7,background:"transparent",border:"none",cursor:"pointer",color:"var(--brand-brown)",fontWeight:600,fontSize:13,fontFamily:"var(--font-sans)",padding:"6px 4px"}}><Icon name="plus" size={15}/>Adicionar pessoa</button>;
+  return <div style={{position:"relative",minWidth:220}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface)",borderRadius:99,padding:"7px 12px",boxShadow:"var(--shadow-sm)"}}>
+      <Icon name="search" size={15}/>
+      <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Escreva o nome..." onBlur={()=>setTimeout(()=>setOpen(false),150)} style={{border:"none",outline:"none",background:"transparent",flex:1,fontFamily:"var(--font-sans)",fontSize:13}}/>
+    </div>
+    {q && <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:"var(--surface)",borderRadius:"var(--r-md)",boxShadow:"var(--shadow-md)",zIndex:20,overflow:"hidden"}}>
+      {results.length?results.map((p,i)=>(
+        <div key={i} onMouseDown={()=>onPick(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <Avatar name={p.n} size={30}/><span style={{fontSize:13,fontWeight:600}}>{p.n}</span>
+        </div>
+      )):<div style={{padding:"12px",fontSize:13,color:"var(--text-3)"}}>Ninguém encontrado.</div>}
+    </div>}
+  </div>;
+}
+
+function MontagemSheet({ montagem, onBack }){
+  const { jovens, setMontagemCell } = useStore();
+  const [tab,setTab]=useState(MONTAGEM_TABS[0]);
+  const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
+  const teamData=(montagem.cells&&montagem.cells[tab])||{};
+  const pool=jovens; // pool de busca (jovens)
+
+  let rowIdx=0;
+  return <div>
+    <Header title={montagem.nome}
+      sub={"Responsável: "+montagem.autor+" · "+montagem.visib}
+      right={<Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>}/>
+
+    {/* Abas de equipes (estilo Excel) */}
+    <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:14}}>
+      {MONTAGEM_TABS.map(t=>{const active=t===tab;return(
+        <button key={t} onClick={()=>setTab(t)} style={{whiteSpace:"nowrap",border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:active?700:500,padding:"9px 15px",borderRadius:"var(--r-sm) var(--r-sm) 0 0",background:active?"var(--surface)":"var(--surface-2)",color:active?"var(--brand-brown)":"var(--text-2)",boxShadow:active?"var(--shadow-sm)":"none",borderBottom:active?"3px solid var(--brand-brown)":"3px solid transparent"}}>{t}</button>
+      );})}
+    </div>
+
+    <Card pad="0" style={{overflow:"hidden"}}>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:900}}>
+          <thead>
+            <tr>
+              {["#","Foto","Nome","Telefone","EJC que fez","Endereço","Instrumento"].map((c,i)=>(
+                <th key={i} style={{padding:"11px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",background:"var(--surface-2)",whiteSpace:"nowrap"}}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ROW_SECTIONS.map((sec)=>(
+              <React.Fragment key={sec.label}>
+                <tr><td colSpan={7} style={{padding:"10px 14px",background:"var(--surface-2)"}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:700,color:sec.tone,textTransform:"uppercase",letterSpacing:".04em"}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:sec.tone}}/>{sec.label}
+                  </span>
+                </td></tr>
+                {Array.from({length:sec.count}).map((_,k)=>{
+                  rowIdx++;
+                  const rowKey=sec.label+"-"+k;
+                  const person=teamData[rowKey];
+                  return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)"}}>
+                    <td style={{padding:"8px 14px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
+                    {person?<>
+                      <td style={{padding:"8px 14px"}}><Avatar name={person.n} size={34}/></td>
+                      <td style={{padding:"8px 14px",fontWeight:600,whiteSpace:"nowrap"}}>{person.n}</td>
+                      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.tel}</td>
+                      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.ejc}</td>
+                      <td style={{padding:"8px 14px",color:"var(--text-2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{person.end}</td>
+                      <td style={{padding:"8px 14px"}}>{person.inst?<Tag color="var(--cat-plum)">{person.inst}</Tag>:<span style={{color:"var(--text-3)"}}>—</span>}</td>
+                    </>:<>
+                      <td colSpan={6} style={{padding:"8px 14px"}}><AddPersonCell pool={pool} onPick={p=>setPerson(rowKey,p)}/></td>
+                    </>}
+                  </tr>;
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+    <p style={{fontSize:12,color:"var(--text-3)",marginTop:12,display:"flex",alignItems:"center",gap:6}}>
+      <Icon name="info" size={14}/>Casais (tios) são puxados juntos: ao adicionar um, o cônjuge aparece automaticamente. Planilha começa zerada.
+    </p>
+  </div>;
+}
+
+function NovaMontagemModal({ onClose, onCreate }){
+  const [nome,setNome]=useState("");
+  const [autor,setAutor]=useState("");
+  const [visib,setVisib]=useState("Todos com acesso");
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:440,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Fazer montagem</h3>
+      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Crie uma nova montagem para organizar as equipes.</p>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nome da montagem</label>
+      <input autoFocus value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Montagem XXXI EJC (2026)" style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",marginBottom:16}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Responsável pela criação</label>
+      <input value={autor} onChange={e=>setAutor(e.target.value)} placeholder="Seu nome" style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",marginBottom:16}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:8}}>Quem pode visualizar</label>
+      <div style={{display:"flex",gap:8,marginBottom:24}}>
+        {["Todos com acesso","Só o proprietário"].map(o=>(
+          <button key={o} onClick={()=>setVisib(o)} style={{flex:1,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:600,padding:"11px",borderRadius:"var(--r-md)",background:visib===o?"var(--brand-brown)":"var(--surface-2)",color:visib===o?"var(--on-brand)":"var(--text-2)"}}>{o}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" onClick={()=>onCreate({nome:nome||"Nova montagem",autor:autor||"Você",visib})} iconLeft={<Icon name="check" size={16}/>}>Criar montagem</Button>
+      </div>
+    </div>
+  </div>;
+}
+
+function Montagem(){
+  const { montagens, addMontagem } = useStore();
+  const [openId,setOpenId]=useState(null); // id da montagem aberta
+  const [modal,setModal]=useState(false);
+  const openMont = montagens.find(m=>m.id===openId);
+
+  if(openMont) return <MontagemSheet montagem={openMont} onBack={()=>setOpenId(null)}/>;
+
+  const countFilled = m => Object.values(m.cells||{}).reduce((s,tab)=>s+Object.keys(tab).length,0);
+
+  return <div>
+    <Header title="Montagem" sub="Organize as equipes de cada encontro"/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:16}}>
+      {/* Card "Fazer montagem" sempre primeiro */}
+      <button onClick={()=>setModal(true)} style={{textAlign:"left",cursor:"pointer",border:"2px dashed var(--brand-brown-soft)",background:"var(--surface-2)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:150,display:"flex",flexDirection:"column",justifyContent:"space-between",fontFamily:"var(--font-sans)"}}>
+        <span style={{width:46,height:46,borderRadius:99,background:"var(--brand-brown)",color:"var(--on-brand)",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus" size={22}/></span>
+        <div><div style={{fontSize:16,fontWeight:700,color:"var(--brand-brown)"}}>Fazer montagem</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>Criar nova organização de equipes</div></div>
+      </button>
+      {montagens.map((m)=>{const n=countFilled(m);return(
+        <button key={m.id} onClick={()=>setOpenId(m.id)} style={{textAlign:"left",cursor:"pointer",border:"none",background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:150,boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",justifyContent:"space-between",fontFamily:"var(--font-sans)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <span style={{width:46,height:46,borderRadius:99,background:"var(--cat-terracotta)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="layout-grid" size={20}/></span>
+            <Badge tone={m.visib==="Só o proprietário"?"neutral":"success"} dot>{m.visib==="Só o proprietário"?"Privada":"Compartilhada"}</Badge>
+          </div>
+          <div><div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{m.nome}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>por {m.autor}{n>0?" · "+n+" alocados":""}</div></div>
+        </button>
+      );})}
+    </div>
+    {modal && <NovaMontagemModal onClose={()=>setModal(false)} onCreate={async m=>{const nm=await addMontagem(m);setModal(false);if(nm)setOpenId(nm.id);}}/>}
+  </div>;
+}
+
+/* ======================================================================
+   VISUALIZAÇÃO DA FICHA (read-only)
+   ====================================================================== */
+function InfoRow({ label, value, full }){
+  if(value==null||value===""||(Array.isArray(value)&&value.length===0)) return null;
+  return <div style={{gridColumn:full?"1 / -1":"auto"}}>
+    <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:15,color:"var(--text)",fontWeight:500}}>{value}</div>
+  </div>;
+}
+function ReadChips({ items, tone="brand" }){
+  const arr=[].concat(items||[]).filter(Boolean);
+  if(!arr.length) return null;
+  return <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{arr.map((x,i)=><Badge key={i} tone={tone}>{x}</Badge>)}</div>;
+}
+const rowGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"18px 20px"};
+
+function PersonDetail({ person, onClose }){
+  useLucide();
+  const f=person.ficha; // ficha completa (quando cadastrado pelo formulário)
+  const isTio=person.mjc===undefined;
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+    <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
+        <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
+        <div style={{marginRight:"auto"}}>
+          <div className="mono-overline">{isTio?"FICHA · TIOS":"FICHA DO JOVEM"}</div>
+          <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{person.n}</h1>
+        </div>
+        <StatusDot active={person.ativo}/>
+      </div>
+    </div>
+
+    <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
+      <PersonDetailBody person={person}/>
+    </div>
+  </div>;
+}
+
+function PersonDetailBody({ person }){
+  const f=person.ficha;
+  const isTio=person.mjc===undefined;
+  return <>
+      {/* Cabeçalho com avatar e contatos */}
+      <Card style={{marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
+          <Avatar name={person.n} size={72}/>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:20,fontWeight:800,letterSpacing:"-.01em"}}>{person.n}</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+              {!isTio && person.mjc && person.mjc!=="—" && <Tag color={mjcColor(person.mjc)}>{person.mjc}</Tag>}
+              {person.ejc && person.ejc!=="—" && <span style={{fontSize:13,color:"var(--text-2)"}}>{person.ejc}</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:14,color:"var(--text-2)"}}>
+            {person.tel && person.tel!=="—" && <span style={{display:"inline-flex",alignItems:"center",gap:7}}><Icon name="phone" size={14}/>{person.tel}</span>}
+            {f&&f.email && <span style={{display:"inline-flex",alignItems:"center",gap:7}}><Icon name="mail" size={14}/>{f.email}</span>}
+            {f&&f.insta && <span style={{display:"inline-flex",alignItems:"center",gap:7}}><Icon name="instagram" size={14}/>{f.insta}</span>}
+          </div>
+        </div>
+      </Card>
+
+      {/* Se NÃO houver ficha completa (cadastro antigo/semente) */}
+      {!f && <Section title="Resumo" icon="id-card" color="var(--cat-blue)">
+        <div style={rowGrid}>
+          <InfoRow label="Telefone" value={person.tel}/>
+          {!isTio && <InfoRow label="Equipe do MJC" value={person.mjc}/>}
+          <InfoRow label={isTio?"Vínculo":"EJC que fez"} value={person.ejc}/>
+          <InfoRow label="Endereço" value={person.end} full/>
+          {!isTio && <InfoRow label="Instrumento" value={person.inst||"—"}/>}
+        </div>
+        <p style={{fontSize:12,color:"var(--text-3)",marginTop:16,display:"flex",alignItems:"center",gap:6}}>
+          <Icon name="info" size={14}/>Esta pessoa ainda não tem a ficha completa preenchida pelo novo formulário.
+        </p>
+      </Section>}
+
+      {/* Ficha completa */}
+      {f && <>
+        <Section title="Dados pessoais" icon="user" color="var(--cat-blue)">
+          <div style={rowGrid}>
+            <InfoRow label="Nome completo" value={f.nome} full/>
+            <InfoRow label="Apelido" value={f.apelido}/>
+            <InfoRow label="Data de nascimento" value={f.nasc}/>
+            <InfoRow label="CPF" value={f.cpf}/>
+            <InfoRow label="WhatsApp" value={f.whats}/>
+            <InfoRow label="E-mail" value={f.email}/>
+            <InfoRow label="Instagram" value={f.insta}/>
+            <InfoRow label="Endereço" value={f.endereco} full/>
+          </div>
+        </Section>
+
+        {(f.sacramentos&&f.sacramentos.length>0) && <Section title="Sacramentos" icon="church" color="var(--cat-plum)">
+          <ReadChips items={f.sacramentos} tone="brand"/>
+        </Section>}
+
+        <Section title="Família" icon="users" color="var(--cat-terracotta)">
+          <div style={rowGrid}>
+            <InfoRow label="Pais" value={f.paisEstado}/>
+            <div/>
+            <InfoRow label="Pai" value={f.paiNome?(f.paiNome+(f.paiFalecido?" (falecido)":"")):null}/>
+            <InfoRow label="Telefone do pai" value={f.paiFalecido?null:f.paiTel}/>
+            <InfoRow label="Mãe" value={f.maeNome?(f.maeNome+(f.maeFalecida?" (falecida)":"")):null}/>
+            <InfoRow label="Telefone da mãe" value={f.maeFalecida?null:f.maeTel}/>
+          </div>
+        </Section>
+
+        <Section title="EJC no Califórnia" icon="cross" color="var(--brand-brown)">
+          <div style={rowGrid}>
+            <InfoRow label="Fez EJC no Califórnia?" value={f.fezCalifornia===true?"Sim":f.fezCalifornia===false?"Não":null}/>
+            {f.fezCalifornia===true && <InfoRow label="Ano que fez" value={f.anoEjc}/>}
+            {f.fezCalifornia===false && <InfoRow label="Qual seu EJC?" value={f.qualEjc}/>}
+            {f.fezCalifornia===true && <InfoRow label="Casal de tio" value={f.casalTio}/>}
+          </div>
+          {(f.equipesCalifornia&&f.equipesCalifornia.length>0) && <div style={{marginTop:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Equipes que serviu</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {f.equipesCalifornia.map((r,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+                  <Badge tone="brand">{r.ano}</Badge><span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
+                  {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
+                </div>
+              ))}
+            </div>
+          </div>}
+        </Section>
+
+        <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
+          <div style={rowGrid}>
+            <InfoRow label="Já foi garçom?" value={f.garcom===true?"Sim":f.garcom===false?"Não":null}/>
+            {f.garcom===true && <InfoRow label="Onde?" value={f.garcomOnde}/>}
+          </div>
+          {(f.serviuFora&&f.serviuFora.length>0) && <div style={{marginTop:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Já serviu fora</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {f.serviuFora.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px",fontSize:14}}><Icon name="map-pin" size={15}/>{s}</div>)}
+            </div>
+          </div>}
+        </Section>
+
+        {(f.mjcAtual) && <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)">
+          <Badge tone="brand">{f.mjcAtual}</Badge>
+        </Section>}
+
+        {f.musico!=null && <Section title="Música" icon="music" color="var(--cat-plum)">
+          <div style={{marginBottom:(f.musico&&f.instrumentos&&f.instrumentos.length)?12:0}}><InfoRow label="Músico?" value={f.musico?"Sim":"Não"}/></div>
+          {f.musico && <ReadChips items={f.instrumentos} tone="brand"/>}
+        </Section>}
+
+        <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)">
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <InfoRow label="Restrição física" value={f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica} full/>
+            <InfoRow label="Restrição alimentar" value={f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim} full/>
+            {(f.neuro&&f.neuro.length>0) && <div>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Neurodivergências e saúde mental</div>
+              <ReadChips items={f.neuro.map(x=>x==="Outra"?(f.neuroOutra||"Outra"):x)} tone="danger"/>
+            </div>}
+          </div>
+        </Section>
+      </>}
+  </>;
+}
+
+/* ======================================================================
+   Placeholder (Novo formulário / Relatórios)
+   ====================================================================== */
+function EmBreve({ title, sub, icon }){
+  return <div>
+    <Header title={title} sub={sub}/>
+    <Card style={{minHeight:280,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,textAlign:"center"}}>
+      <span style={{width:64,height:64,borderRadius:99,background:"var(--surface-2)",color:"var(--text-3)",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name={icon} size={28}/></span>
+      <div style={{fontSize:17,fontWeight:700}}>Em breve</div>
+      <div style={{fontSize:14,color:"var(--text-2)",maxWidth:380}}>Esta seção será desenvolvida nas próximas etapas do projeto.</div>
+    </Card>
+  </div>;
+}
+
+/* ======================================================================
+   FICHA DO JOVEM — formulário completo
+   ====================================================================== */
+const SACRAMENTOS=["Batismo","1ª Comunhão","Crisma","Matrimônio","Não tenho","Não sou católico"];
+const INSTRUMENTOS=["Voz","Violão","Guitarra","Baixo","Teclado","Piano","Bateria","Cajón","Percussão","Violino","Flauta","Saxofone","Trompete"];
+const RESTR_FISICA=["Nenhuma restrição física","Dificuldade de locomoção","Epilepsia / Convulsões","Outra"];
+const RESTR_ALIM=["Nenhuma restrição alimentar","Intolerância à lactose","Intolerância ao glúten","Vegetariano","Vegano","Diabete (restrição de açúcar)","Outra"];
+const NEURO=["Nenhuma condição","Transtorno do Espectro Autista (TEA)","TDAH","Ansiedade / Síndrome do pânico","Depressão","Fobia Social","Prefiro não informar","Outra"];
+const EJC_TEAMS_ALL=["Acolhida","Cafezinho","Cozinha","Liturgia Interna","Liturgia Externa","Secretaria","Compras","Ordem e Limpeza","Visitação Externa","Tios Circulistas","Moita","Sala","Coordenação Geral","Recepção ao Palestrante"];
+
+/* ---- máscaras e validação ---- */
+const onlyDigits = s => (s||"").replace(/\D/g,"");
+function maskCPF(v){
+  const d=onlyDigits(v).slice(0,11);
+  if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+  if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+  if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`;
+  return d;
+}
+function maskTelefone(v){
+  const d=onlyDigits(v).slice(0,11);
+  if(!d) return "";
+  if(d.length<=2) return `(${d}`;
+  if(d.length<=6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if(d.length<=10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+}
+function maskInstagram(v){
+  let s=(v||"").trim().replace(/\s+/g,"");
+  if(!s) return "";
+  s=s.replace(/^@+/,"");
+  return s?("@"+s):"";
+}
+function validaCPF(cpf){
+  const d=onlyDigits(cpf);
+  if(d.length!==11 || /^(\d)\1{10}$/.test(d)) return false;
+  let s=0; for(let i=0;i<9;i++) s+=parseInt(d[i])*(10-i);
+  let r=(s*10)%11; if(r===10) r=0; if(r!==parseInt(d[9])) return false;
+  s=0; for(let i=0;i<10;i++) s+=parseInt(d[i])*(11-i);
+  r=(s*10)%11; if(r===10) r=0; return r===parseInt(d[10]);
+}
+const validaEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e||"").trim());
+const validaTelefone = t => { const d=onlyDigits(t); return d.length===10||d.length===11; };
+
+function chipStyle(active){
+  return {border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:600,padding:"9px 15px",borderRadius:"var(--r-pill)",transition:"all .15s",
+    background:active?"var(--brand-brown)":"var(--surface-2)",color:active?"var(--on-brand)":"var(--text-2)",boxShadow:active?"var(--shadow-xs)":"none"};
+}
+function Field({ label, hint, children, required, span, error }){
+  return <div className={error?"has-error":""} style={{marginBottom:2,gridColumn:span?"1 / -1":"auto"}}>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:7,color:"var(--text)"}}>{label}{required&&<span style={{color:"var(--brand-red)"}}> *</span>}</label>
+    {children}
+    {error
+      ? <div style={{fontSize:12,color:"var(--brand-red)",marginTop:5,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{error}</div>
+      : hint&&<div style={{fontSize:12,color:"var(--text-3)",marginTop:5}}>{hint}</div>}
+  </div>;
+}
+function Input({ style, error, ...p }){
+  const [f,setF]=useState(false);
+  const ring = error ? "0 0 0 3px color-mix(in oklch, var(--danger) 30%, transparent)" : f?"var(--ring)":"none";
+  return <input {...p} onFocus={()=>setF(true)} onBlur={()=>setF(false)} style={{width:"100%",border:"none",background:error?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",boxShadow:ring,transition:"box-shadow .15s, background .15s",...style}}/>;
+}
+function YesNo({ value, onChange }){
+  return <div style={{display:"inline-flex",gap:8}}>
+    {[["Sim",true],["Não",false]].map(([lbl,v])=>(
+      <button key={lbl} type="button" onClick={()=>onChange(v)} style={{...chipStyle(value===v),minWidth:70}}>{lbl}</button>
+    ))}
+  </div>;
+}
+function ChipGroup({ options, value, onChange, multi }){
+  const sel = multi ? (value||[]) : value;
+  const isOn = o => multi ? sel.includes(o) : sel===o;
+  const toggle = o => {
+    if(multi){ onChange(sel.includes(o)?sel.filter(x=>x!==o):[...sel,o]); }
+    else onChange(o);
+  };
+  return <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+    {options.map(o=><button key={o} type="button" onClick={()=>toggle(o)} style={chipStyle(isOn(o))}>{o}</button>)}
+  </div>;
+}
+function Section({ title, icon, color="var(--brand-brown)", desc, children }){
+  return <Card style={{marginBottom:18}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+      <span style={{width:40,height:40,borderRadius:99,background:color,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={icon} size={19}/></span>
+      <div><h3 style={{margin:0,fontSize:16,fontWeight:700}}>{title}</h3>{desc&&<p style={{margin:"2px 0 0",fontSize:13,color:"var(--text-2)"}}>{desc}</p>}</div>
+    </div>
+    {children}
+  </Card>;
+}
+const grid2 = {display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16};
+
+function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfId }){
+  const [f,setF]=useState({
+    sacramentos:[], serviuFora:[], instrumentos:[], equipesCalifornia:[],
+    fezCalifornia:null, garcom:null, garcomOnde:"", musico:null, mjcAtual:"",
+    restrFisica:"", restrFisicaOutra:"", restrAlim:"", restrAlimOutra:"", neuro:[], neuroOutra:"",
+    paisEstado:"", paiFalecido:false, maeFalecida:false,
+    ...(initial||{}),
+  });
+  const { jovens } = useStore();
+  const [errors,setErrors]=useState({});
+  const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
+  const [foraNew,setForaNew]=useState("");
+
+  // detecção de duplicados (na hora) — só compara quando o valor está completo/válido
+  const normEmail = e => (e||"").trim().toLowerCase();
+  const cpfOwner = onlyDigits(f.cpf).length===11 ? jovens.find(j=>j.id!==selfId && j.ficha && onlyDigits(j.ficha.cpf)===onlyDigits(f.cpf)) : null;
+  const emailOwner = validaEmail(f.email) ? jovens.find(j=>j.id!==selfId && j.ficha && normEmail(j.ficha.email)===normEmail(f.email)) : null;
+  const dupCpfMsg = cpfOwner ? ("Este CPF já está cadastrado — "+cpfOwner.n+".") : null;
+  const dupEmailMsg = emailOwner ? ("Este e-mail já está cadastrado — "+emailOwner.n+".") : null;
+
+  const [busy,setBusy]=useState(false);
+  const handleSave=async ()=>{
+    const errs={};
+    if(!f.nome || !f.nome.trim()) errs.nome="Informe o nome completo.";
+    if(!f.whats) errs.whats="Informe o WhatsApp.";
+    else if(!validaTelefone(f.whats)) errs.whats="WhatsApp inválido — use (DD) e 8 ou 9 dígitos.";
+    if(f.cpf && !validaCPF(f.cpf)) errs.cpf="CPF inválido.";
+    else if(dupCpfMsg) errs.cpf=dupCpfMsg;
+    if(f.email && !validaEmail(f.email)) errs.email="E-mail inválido.";
+    else if(dupEmailMsg) errs.email=dupEmailMsg;
+    if(!f.paiFalecido && f.paiTel && !validaTelefone(f.paiTel)) errs.paiTel="Telefone inválido.";
+    if(!f.maeFalecida && f.maeTel && !validaTelefone(f.maeTel)) errs.maeTel="Telefone inválido.";
+    setErrors(errs);
+    if(Object.keys(errs).length){
+      setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
+      return;
+    }
+    if(busy) return;
+    setBusy(true);
+    await (onSave&&onSave(f));
+    setBusy(false);
+  };
+
+  useLucide();
+
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+    {/* top bar */}
+    <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
+        <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
+        <div style={{marginRight:"auto"}}>
+          <div className="mono-overline">{overline||"NOVA FICHA"}</div>
+          <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{title||"Ficha do jovem"}</h1>
+        </div>
+        <Button variant="ghost" className="hide-mobile" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={handleSave} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":(saveLabel||"Salvar ficha")}</Button>
+      </div>
+    </div>
+
+    <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
+
+      {/* 1. Dados pessoais */}
+      <Section title="Dados pessoais" icon="user" color="var(--cat-blue)">
+        <div style={grid2}>
+          <Field label="Nome completo" required span error={errors.nome}><Input value={f.nome||""} onChange={e=>set("nome",e.target.value)} error={!!errors.nome} placeholder="Nome e sobrenome"/></Field>
+          <Field label="Apelido"><Input value={f.apelido||""} onChange={e=>set("apelido",e.target.value)} placeholder="Como te chamam"/></Field>
+          <Field label="Data de nascimento"><Input type="date" value={f.nasc||""} onChange={e=>set("nasc",e.target.value)}/></Field>
+          <Field label="CPF" error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
+          <Field label="WhatsApp" required error={errors.whats}><Input value={f.whats||""} onChange={e=>set("whats",maskTelefone(e.target.value))} error={!!errors.whats} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+          <Field label="E-mail" error={errors.email||dupEmailMsg}><Input type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} error={!!(errors.email||dupEmailMsg)} placeholder="voce@email.com"/></Field>
+          <Field label="Instagram"><Input value={f.insta||""} onChange={e=>set("insta",maskInstagram(e.target.value))} placeholder="@seu.usuario"/></Field>
+        </div>
+        <div style={{marginTop:16}}>
+          <Field label="Endereço completo" hint="Rua, número, bairro e cidade">
+            <Input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} placeholder="Rua Exemplo, 123 — Bairro, Belo Horizonte"/>
+          </Field>
+        </div>
+      </Section>
+
+      {/* 2. Sacramentos */}
+      <Section title="Sacramentos" icon="church" color="var(--cat-plum)" desc="Marque todos que já recebeu">
+        <ChipGroup multi options={SACRAMENTOS} value={f.sacramentos} onChange={v=>set("sacramentos",v)}/>
+      </Section>
+
+      {/* 3. Família */}
+      <Section title="Família" icon="users" color="var(--cat-terracotta)">
+        <Field label="Pai e mãe são casados ou separados?">
+          <ChipGroup options={["Casados","Separados","Outro"]} value={f.paisEstado} onChange={v=>set("paisEstado",v)}/>
+        </Field>
+        <div style={{...grid2,marginTop:16}}>
+          <div>
+            <Field label="Nome do pai"><Input value={f.paiNome||""} onChange={e=>set("paiNome",e.target.value)} placeholder="Nome do pai"/></Field>
+            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:2}}>
+              <input type="checkbox" checked={f.paiFalecido} onChange={e=>set("paiFalecido",e.target.checked)}/> Falecido
+            </label>
+          </div>
+          <Field label="Telefone do pai" error={errors.paiTel}><Input value={f.paiTel||""} onChange={e=>set("paiTel",maskTelefone(e.target.value))} error={!!errors.paiTel} inputMode="tel" placeholder="(31) 90000-0000" style={{opacity:f.paiFalecido?.5:1}} disabled={f.paiFalecido}/></Field>
+          <div>
+            <Field label="Nome da mãe"><Input value={f.maeNome||""} onChange={e=>set("maeNome",e.target.value)} placeholder="Nome da mãe"/></Field>
+            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:2}}>
+              <input type="checkbox" checked={f.maeFalecida} onChange={e=>set("maeFalecida",e.target.checked)}/> Falecida
+            </label>
+          </div>
+          <Field label="Telefone da mãe" error={errors.maeTel}><Input value={f.maeTel||""} onChange={e=>set("maeTel",maskTelefone(e.target.value))} error={!!errors.maeTel} inputMode="tel" placeholder="(31) 90000-0000" style={{opacity:f.maeFalecida?.5:1}} disabled={f.maeFalecida}/></Field>
+        </div>
+      </Section>
+
+      {/* 4. EJC no Califórnia */}
+      <Section title="EJC no Califórnia" icon="cross" color="var(--brand-brown)">
+        <Field label="Fez EJC no Califórnia?">
+          <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
+        </Field>
+        {f.fezCalifornia===true && <div style={{marginTop:16}}>
+          <div style={grid2}>
+            <Field label="Ano que fez EJC">
+              <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+                <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
+              </select>
+            </Field>
+            <Field label="Nome do casal de tio"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
+          </div>
+          <div style={{marginTop:16}}>
+            <Field label="Equipes que serviu no Califórnia" hint="Adicione cada ano/equipe e marque se foi coordenador">
+              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
+            </Field>
+          </div>
+        </div>}
+        {f.fezCalifornia===false && <div style={{marginTop:16}}>
+          <Field label="Qual seu EJC?" hint="Onde você fez seu Encontro">
+            <Input value={f.qualEjc||""} onChange={e=>set("qualEjc",e.target.value)} placeholder="Ex: EJC Padre Eustáquio, 2022"/>
+          </Field>
+          <div style={{marginTop:16}}>
+            <Field label="Equipes que serviu no Califórnia">
+              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
+            </Field>
+          </div>
+        </div>}
+      </Section>
+
+      {/* 5. Experiência */}
+      <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
+        <Field label="Já foi garçom?">
+          <YesNo value={f.garcom} onChange={v=>set("garcom",v)}/>
+        </Field>
+        {f.garcom===true && <div style={{marginTop:14}}>
+          <Field label="Onde?"><Input value={f.garcomOnde} onChange={e=>set("garcomOnde",e.target.value)} placeholder="Escreva onde foi garçom"/></Field>
+        </div>}
+        <div style={{marginTop:18}}>
+          <Field label="Já serviu fora?">
+            <YesNo value={f.serviuForaFlag} onChange={v=>set("serviuForaFlag",v)}/>
+          </Field>
+        </div>
+        {f.serviuForaFlag===true && <div style={{marginTop:14}}>
+          {f.serviuFora.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+            {f.serviuFora.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+                <Icon name="map-pin" size={15}/><span style={{flex:1,fontSize:14}}>{s}</span>
+                <IconButton label="Remover" size={30} variant="soft" onClick={()=>set("serviuFora",f.serviuFora.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+              </div>
+            ))}
+          </div>}
+          <div style={{display:"flex",gap:10}}>
+            <Input value={foraNew} onChange={e=>setForaNew(e.target.value)} placeholder="EJC Padre Eustáquio em 2025..." onKeyDown={e=>{if(e.key==="Enter"&&foraNew.trim()){set("serviuFora",[...f.serviuFora,foraNew.trim()]);setForaNew("");}}}/>
+            <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={()=>{if(foraNew.trim()){set("serviuFora",[...f.serviuFora,foraNew.trim()]);setForaNew("");}}}>Adicionar</Button>
+          </div>
+        </div>}
+      </Section>
+
+      {/* 6. MJC atual */}
+      <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)">
+        <ChipGroup options={[...MJC_TEAMS,"Não estou em nenhuma"]} value={f.mjcAtual} onChange={v=>set("mjcAtual",v)}/>
+      </Section>
+
+      {/* 7. Música */}
+      <Section title="Música" icon="music" color="var(--cat-plum)">
+        <Field label="Músico?">
+          <YesNo value={f.musico} onChange={v=>set("musico",v)}/>
+        </Field>
+        {f.musico===true && <div style={{marginTop:14}}>
+          <Field label="O que toca ou canta?" hint="Pode marcar mais de uma opção">
+            <ChipGroup multi options={INSTRUMENTOS} value={f.instrumentos} onChange={v=>set("instrumentos",v)}/>
+          </Field>
+        </div>}
+      </Section>
+
+      {/* 8. Saúde e restrições */}
+      <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar de você no encontro">
+        <Field label="Restrição física">
+          <ChipGroup options={RESTR_FISICA} value={f.restrFisica} onChange={v=>set("restrFisica",v)}/>
+        </Field>
+        {f.restrFisica==="Outra" && <div style={{marginTop:10,marginBottom:6}}><Input value={f.restrFisicaOutra} onChange={e=>set("restrFisicaOutra",e.target.value)} placeholder="Descreva a restrição física"/></div>}
+
+        <div style={{marginTop:18}}>
+          <Field label="Restrição ou preferência alimentar">
+            <ChipGroup options={RESTR_ALIM} value={f.restrAlim} onChange={v=>set("restrAlim",v)}/>
+          </Field>
+          {f.restrAlim==="Outra" && <div style={{marginTop:10}}><Input value={f.restrAlimOutra} onChange={e=>set("restrAlimOutra",e.target.value)} placeholder="Descreva a restrição alimentar"/></div>}
+        </div>
+
+        <div style={{marginTop:18}}>
+          <Field label="Neurodivergências e saúde mental" hint="Marque o que se aplica">
+            <ChipGroup multi options={NEURO} value={f.neuro} onChange={v=>set("neuro",v)}/>
+          </Field>
+          {f.neuro.includes("Outra") && <div style={{marginTop:10}}><Input value={f.neuroOutra} onChange={e=>set("neuroOutra",e.target.value)} placeholder="Descreva"/></div>}
+        </div>
+      </Section>
+
+      <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={handleSave} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":(saveLabel||"Salvar ficha")}</Button>
+      </div>
+    </div>
+  </div>;
+}
+
+function RepeatEquipes({ value, onChange }){
+  const [ano,setAno]=useState("");
+  const [eq,setEq]=useState("");
+  const [coord,setCoord]=useState(false);
+  const add=()=>{ if(!ano||!eq)return; onChange([...value,{ano,eq,coord}]); setAno("");setEq("");setCoord(false); };
+  return <div>
+    {value.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+      {value.map((r,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+          <Badge tone="brand">{r.ano}</Badge>
+          <span style={{flex:1,fontSize:14,fontWeight:600}}>{r.eq}</span>
+          {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
+          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(value.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+        </div>
+      ))}
+    </div>}
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+      <select value={ano} onChange={e=>setAno(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:150}}>
+        <option value="">Ano...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
+      </select>
+      <select value={eq} onChange={e=>setEq(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:170}}>
+        <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+      </select>
+      <label style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
+        <input type="checkbox" checked={coord} onChange={e=>setCoord(e.target.checked)}/> Coordenador
+      </label>
+      <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
+    </div>
+  </div>;
+}
+
+/* ======================================================================
+   NOVO FORMULÁRIO (construtor)
+   ====================================================================== */
+const TIPO_META={
+  texto:{lbl:"Texto",icon:"type"},
+  data:{lbl:"Data",icon:"calendar"},
+  simnao:{lbl:"Sim / Não",icon:"toggle-left"},
+  unica:{lbl:"Escolha única",icon:"circle-dot"},
+  multipla:{lbl:"Múltipla escolha",icon:"list-checks"},
+};
+// catálogo de campos disponíveis para montar formulários
+const CAMPO_CATALOGO=[
+  {id:"nome",label:"Nome completo",type:"texto"},
+  {id:"apelido",label:"Apelido",type:"texto"},
+  {id:"nasc",label:"Data de nascimento",type:"data"},
+  {id:"cpf",label:"CPF",type:"texto"},
+  {id:"email",label:"E-mail",type:"texto"},
+  {id:"whats",label:"WhatsApp",type:"texto"},
+  {id:"insta",label:"Instagram",type:"texto"},
+  {id:"endereco",label:"Endereço completo",type:"texto"},
+  {id:"sacramentos",label:"Sacramentos",type:"multipla",opcoes:SACRAMENTOS},
+  {id:"pais",label:"Estado dos pais",type:"unica",opcoes:["Casados","Separados","Outro"]},
+  {id:"fezCalifornia",label:"Fez EJC no Califórnia?",type:"simnao"},
+  {id:"garcom",label:"Já foi garçom?",type:"simnao"},
+  {id:"serviuFora",label:"Já serviu fora?",type:"simnao"},
+  {id:"mjcAtual",label:"Equipe atual do MJC",type:"unica",opcoes:[...MJC_TEAMS,"Não estou em nenhuma"]},
+  {id:"musico",label:"Músico?",type:"simnao"},
+  {id:"restrFisica",label:"Restrição física",type:"unica",opcoes:RESTR_FISICA},
+  {id:"restrAlim",label:"Restrição alimentar",type:"unica",opcoes:RESTR_ALIM},
+  {id:"neuro",label:"Neurodivergências e saúde mental",type:"multipla",opcoes:NEURO},
+  {id:"texto_livre",label:"Campo de texto livre",type:"texto"},
+  {id:"pergunta_simnao",label:"Pergunta Sim / Não",type:"simnao"},
+];
+const valoresDoTipo=(campo)=>{
+  if(!campo) return [];
+  if(campo.type==="simnao") return ["Sim","Não"];
+  return campo.opcoes||[];
+};
+
+function PaletaCampos({ onAdd, onClose }){
+  const [q,setQ]=useState("");
+  const list=CAMPO_CATALOGO.filter(c=>c.label.toLowerCase().includes(q.toLowerCase()));
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:520,maxWidth:"92vw",maxHeight:"80vh",display:"flex",flexDirection:"column",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"22px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+        <div style={{flex:1}}><h3 style={{margin:0,fontSize:18,fontWeight:800}}>Adicionar campo</h3><p style={{margin:"2px 0 0",fontSize:13,color:"var(--text-2)"}}>Escolha um campo do catálogo</p></div>
+        <IconButton label="Fechar" variant="soft" onClick={onClose}><Icon name="x" size={18}/></IconButton>
+      </div>
+      <SearchInput placeholder="Buscar campo..." value={q} onChange={setQ} minWidth={0} maxWidth={9999}/>
+      <div style={{overflowY:"auto",marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
+        {list.map(c=>(
+          <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+            <span style={{width:36,height:36,borderRadius:99,background:"var(--brand-brown-soft)",color:"var(--brand-brown)",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={TIPO_META[c.type].icon} size={17}/></span>
+            <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14}}>{c.label}</div><div style={{fontSize:12,color:"var(--text-3)"}}>{TIPO_META[c.type].lbl}</div></div>
+            <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={()=>onAdd(c)}>Adicionar</Button>
+          </div>
+        ))}
+        {list.length===0 && <div style={{padding:"24px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum campo encontrado.</div>}
+      </div>
+    </div>
+  </div>;
+}
+
+function CondicaoConfig({ campo, anteriores, onChange }){
+  const [open,setOpen]=useState(false);
+  const cond=campo.cond;
+  const candidatos=anteriores.filter(c=>c.type==="simnao"||c.type==="unica"||c.type==="multipla");
+  // ao abrir sem condição definida, já inicializa com o padrão exibido
+  useEffect(()=>{
+    if(open && !cond && candidatos.length){
+      onChange({key:candidatos[0].key, value:valoresDoTipo(candidatos[0])[0]});
+    }
+  },[open]);
+  if(cond && !open){
+    const ref=anteriores.find(c=>c.key===cond.key);
+    return <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-pill)",padding:"5px 6px 5px 12px",fontSize:12,fontWeight:600}}>
+      <Icon name="git-branch" size={13}/>Só se “{ref?ref.label:"?"}” = {cond.value}
+      <button onClick={()=>setOpen(true)} title="Editar" style={{border:"none",background:"transparent",cursor:"pointer",color:"inherit",display:"inline-flex"}}><Icon name="pencil" size={13}/></button>
+      <button onClick={()=>onChange(null)} title="Remover condição" style={{border:"none",background:"transparent",cursor:"pointer",color:"inherit",display:"inline-flex"}}><Icon name="x" size={14}/></button>
+    </div>;
+  }
+  if(!open){
+    if(candidatos.length===0) return null;
+    return <button onClick={()=>setOpen(true)} style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--text-2)",fontFamily:"var(--font-sans)",fontSize:12,fontWeight:600}}><Icon name="git-branch" size={13}/>Condicional</button>;
+  }
+  const refKey=(cond&&cond.key)||(candidatos[0]&&candidatos[0].key)||"";
+  const refCampo=candidatos.find(c=>c.key===refKey);
+  const vals=valoresDoTipo(refCampo);
+  return <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,background:"var(--surface)",borderRadius:"var(--r-md)",padding:"8px 10px",boxShadow:"var(--shadow-xs)"}}>
+    <span style={{fontSize:12,color:"var(--text-2)",fontWeight:600}}>Mostrar só se</span>
+    <select value={refKey} onChange={e=>onChange({key:e.target.value,value:valoresDoTipo(candidatos.find(c=>c.key===e.target.value))[0]})} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-sm)",padding:"7px 9px",fontSize:12,fontFamily:"var(--font-sans)",outline:"none"}}>
+      {candidatos.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+    </select>
+    <span style={{fontSize:12,color:"var(--text-2)",fontWeight:600}}>=</span>
+    <select value={(cond&&cond.value)||vals[0]||""} onChange={e=>onChange({key:refKey,value:e.target.value})} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-sm)",padding:"7px 9px",fontSize:12,fontFamily:"var(--font-sans)",outline:"none"}}>
+      {vals.map(v=><option key={v}>{v}</option>)}
+    </select>
+    <Button variant="ghost" onClick={()=>setOpen(false)}>Ok</Button>
+  </div>;
+}
+
+function FormBuilder({ form, onClose, onSave }){
+  useLucide();
+  const sistema = form && form.sistema;
+  const [nome,setNome]=useState(form?form.nome:"");
+  const [campos,setCampos]=useState(form?form.campos:[]);
+  const [paleta,setPaleta]=useState(false);
+
+  const addCampo=(c)=>{ setCampos(l=>[...l,{key:uid(),id:c.id,label:c.label,type:c.type,opcoes:c.opcoes}]); setPaleta(false); };
+  const removeCampo=(key)=>setCampos(l=>l.filter(c=>c.key!==key));
+  const move=(i,dir)=>{ const j=i+dir; if(j<0||j>=campos.length)return; const arr=[...campos]; [arr[i],arr[j]]=[arr[j],arr[i]]; setCampos(arr); };
+  const setCond=(key,cond)=>setCampos(l=>l.map(c=>c.key===key?{...c,cond:cond||undefined}:c));
+
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+    <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
+        <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
+        <div style={{marginRight:"auto"}}>
+          <div className="mono-overline">{sistema?"FORMULÁRIO PADRÃO":form?"EDITAR FORMULÁRIO":"NOVO FORMULÁRIO"}</div>
+          <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{sistema?form.nome:"Montar formulário"}</h1>
+        </div>
+        {!sistema && <><Button variant="ghost" className="hide-mobile" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={()=>onSave({nome:nome.trim()||"Formulário sem nome",campos})}>Salvar formulário</Button></>}
+      </div>
+    </div>
+
+    <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
+      {sistema && <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
+        <Icon name="star" size={16}/>Este é o formulário padrão do sistema (a Ficha do jovem). Ele não pode ser editado nem removido.
+      </div>}
+
+      {!sistema && <Card style={{marginBottom:18}}>
+        <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:7}}>Nome do formulário</label>
+        <Input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Ficha dos tios, Inscrição de encontrista..."/>
+      </Card>}
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Campos {campos.length>0 && <span style={{color:"var(--text-3)",fontWeight:600}}>· {campos.length}</span>}</h3>
+        {!sistema && <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={()=>setPaleta(true)}>Adicionar campo</Button>}
+      </div>
+
+      {campos.length===0 && <Card style={{minHeight:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,textAlign:"center"}}>
+        <span style={{width:56,height:56,borderRadius:99,background:"var(--surface-2)",color:"var(--text-3)",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="list-plus" size={26}/></span>
+        <div style={{fontSize:15,fontWeight:700}}>Nenhum campo ainda</div>
+        <div style={{fontSize:13,color:"var(--text-2)",maxWidth:320}}>Clique em “Adicionar campo” para montar o formulário.</div>
+      </Card>}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {campos.map((c,i)=>(
+          <Card key={c.key} pad="14px 16px">
+            <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <span style={{width:26,fontWeight:800,color:"var(--text-3)",fontSize:14,textAlign:"center"}}>{i+1}</span>
+              <span style={{width:38,height:38,borderRadius:99,background:"var(--brand-brown-soft)",color:"var(--brand-brown)",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={TIPO_META[c.type].icon} size={17}/></span>
+              <div style={{flex:1,minWidth:120}}>
+                <div style={{fontWeight:600,fontSize:15}}>{c.label}</div>
+                <div style={{fontSize:12,color:"var(--text-3)"}}>{TIPO_META[c.type].lbl}</div>
+              </div>
+              {!sistema && <CondicaoConfig campo={c} anteriores={campos.slice(0,i)} onChange={cond=>setCond(c.key,cond)}/>}
+              {sistema && c.cond && <Badge tone="yellow" dot>Condicional</Badge>}
+              {!sistema && <div style={{display:"inline-flex",gap:4,marginLeft:"auto"}}>
+                <IconButton label="Subir" size={32} variant="soft" onClick={()=>move(i,-1)} disabled={i===0} style={{opacity:i===0?.4:1}}><Icon name="chevron-up" size={16}/></IconButton>
+                <IconButton label="Descer" size={32} variant="soft" onClick={()=>move(i,1)} disabled={i===campos.length-1} style={{opacity:i===campos.length-1?.4:1}}><Icon name="chevron-down" size={16}/></IconButton>
+                <IconButton label="Remover" size={32} variant="soft" onClick={()=>removeCampo(c.key)}><Icon name="trash-2" size={15}/></IconButton>
+              </div>}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+    {paleta && <PaletaCampos onAdd={addCampo} onClose={()=>setPaleta(false)}/>}
+  </div>;
+}
+
+function NovoFormulario(){
+  const { formularios, addForm, updateForm, deleteForm, setFavorito } = useStore();
+  const [editing,setEditing]=useState(null); // 'new' | form object
+  if(editing){
+    const isNew = editing==="new";
+    return <FormBuilder form={isNew?null:editing}
+      onClose={()=>setEditing(null)}
+      onSave={data=>{ if(isNew) addForm(data); else updateForm(editing.id,data); setEditing(null); }}/>;
+  }
+  const list=[...formularios].sort((a,b)=>(b.favorito?1:0)-(a.favorito?1:0));
+  return <div>
+    <Header title="Novo formulário" sub="Crie e gerencie os formulários de cadastro"/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:16}}>
+      <button onClick={()=>setEditing("new")} style={{textAlign:"left",cursor:"pointer",border:"2px dashed var(--brand-brown-soft)",background:"var(--surface-2)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:160,display:"flex",flexDirection:"column",justifyContent:"space-between",fontFamily:"var(--font-sans)"}}>
+        <span style={{width:46,height:46,borderRadius:99,background:"var(--brand-brown)",color:"var(--on-brand)",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus" size={22}/></span>
+        <div><div style={{fontSize:16,fontWeight:700,color:"var(--brand-brown)"}}>Criar formulário</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>Montar um novo formulário do zero</div></div>
+      </button>
+      {list.map(f=>(
+        <div key={f.id} style={{background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:160,boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <span style={{width:46,height:46,borderRadius:99,background:f.favorito?"var(--brand-brown)":"var(--cat-blue)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="clipboard-list" size={20}/></span>
+            <button onClick={()=>setFavorito(f.id)} title={f.favorito?"Formulário favorito":"Tornar favorito"} style={{border:"none",background:"transparent",cursor:"pointer",color:f.favorito?"var(--brand-yellow)":"var(--text-3)",display:"inline-flex",padding:4}}>
+              <span style={{fontSize:20,lineHeight:1}}>{f.favorito?"★":"☆"}</span>
+            </button>
+          </div>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{f.nome}</div>
+              {f.sistema && <Badge tone="brand">Padrão</Badge>}
+            </div>
+            <div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>{f.campos.length} campos</div>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <Button variant="secondary" iconLeft={<Icon name={f.sistema?"eye":"pencil"} size={15}/>} onClick={()=>setEditing(f)}>{f.sistema?"Visualizar":"Editar"}</Button>
+              {!f.sistema && <IconButton label="Excluir" variant="soft" onClick={()=>deleteForm(f.id)}><Icon name="trash-2" size={16}/></IconButton>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ======================================================================
+   RELATÓRIOS
+   ====================================================================== */
+function StatTile({ label, value, unit, icon, color }){
+  return <div style={{background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"var(--card-pad)",boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <span style={{fontSize:13,fontWeight:500,color:"var(--text-2)"}}>{label}</span>
+      <span style={{width:38,height:38,borderRadius:99,background:color,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name={icon} size={18}/></span>
+    </div>
+    <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+      <span style={{fontSize:34,fontWeight:800,letterSpacing:"-.02em",lineHeight:1}}>{value}</span>
+      {unit&&<span style={{fontSize:15,fontWeight:600,color:"var(--text-3)"}}>{unit}</span>}
+    </div>
+  </div>;
+}
+function BarRow({ label, value, max, color, icon }){
+  const pct = max>0 ? Math.round(value/max*100) : 0;
+  return <div style={{display:"flex",alignItems:"center",gap:12}}>
+    {icon && <span style={{width:34,height:34,borderRadius:99,background:color,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={icon} size={16}/></span>}
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6,gap:10}}>
+        <span style={{fontSize:14,fontWeight:600,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span>
+        <span style={{fontSize:15,fontWeight:800,color:"var(--text)",flex:"0 0 auto"}}>{value}</span>
+      </div>
+      <div style={{height:9,borderRadius:99,background:"var(--surface-3)",overflow:"hidden"}}>
+        <div style={{width:pct+"%",height:"100%",borderRadius:99,background:color,transition:"width .3s"}}/>
+      </div>
+    </div>
+  </div>;
+}
+const CAT_PALETTE=["var(--cat-terracotta)","var(--cat-plum)","var(--cat-blue)","var(--cat-olive)","var(--cat-brown)","var(--cat-yellow)","var(--cat-red)"];
+
+function Relatorios(){
+  const { jovens } = useStore();
+  const ativos = jovens.filter(j=>j.ativo);
+  const musicos = ativos.filter(j=>j.inst);
+  // músicos por instrumento (inst pode ter vários separados por vírgula)
+  const instCount={};
+  musicos.forEach(m=>String(m.inst).split(/,\s*/).forEach(i=>{const k=i.trim();if(k)instCount[k]=(instCount[k]||0)+1;}));
+  const instList=Object.entries(instCount).sort((a,b)=>b[1]-a[1]);
+  const maxInst=Math.max(1,...instList.map(x=>x[1]));
+  // pessoas ativas por equipe do MJC
+  const teamList=MJC_TEAMS.map(t=>[t,ativos.filter(j=>j.mjc===t).length]);
+  const maxTeam=Math.max(1,...teamList.map(x=>x[1]));
+
+  return <div>
+    <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC"/>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16,marginBottom:20}}>
+      <StatTile label="Pessoas ativas" value={ativos.length} icon="users" color="var(--cat-blue)"/>
+      <StatTile label="Músicos ativos" value={musicos.length} icon="music" color="var(--cat-plum)"/>
+      <StatTile label="Instrumentos" value={instList.length} icon="guitar" color="var(--cat-terracotta)"/>
+      <StatTile label="Equipes do MJC" value={MJC_TEAMS.length} icon="layout-grid" color="var(--cat-olive)"/>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
+      <Card title="Músicos ativos por instrumento" subtitle={musicos.length+" músicos ativos"}>
+        {instList.length===0
+          ? <div style={{padding:"30px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum músico ativo cadastrado.</div>
+          : <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              {instList.map(([inst,n],i)=><BarRow key={inst} label={inst} value={n} max={maxInst} color={CAT_PALETTE[i%CAT_PALETTE.length]} icon="music"/>)}
+            </div>}
+      </Card>
+
+      <Card title="Pessoas ativas por equipe do MJC" subtitle={ativos.length+" pessoas ativas"}>
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {teamList.map(([t,n])=><BarRow key={t} label={t} value={n} max={maxTeam} color={MJC_COLOR[t]} icon={MJC_ICON[t]}/>)}
+        </div>
+      </Card>
+    </div>
+  </div>;
+}
+
+/* ======================================================================
+   DIRIGENTES (gestão de admins)
+   ====================================================================== */
+// função do dirigente: uma equipe do MJC, "Tio dirigente" ou "Coordenação Geral"
+const CARGOS_DIRIGENTE=["Coordenação Geral",...MJC_TEAMS,"Tio dirigente"];
+const cargoColor = c => c==="Tio dirigente" ? "var(--cat-terracotta)" : c==="Coordenação Geral" ? "var(--brand-brown)" : mjcColor(c);
+const cargoIcon = c => c==="Tio dirigente" ? "heart-handshake" : c==="Coordenação Geral" ? "shield-check" : (MJC_ICON[c]||"users");
+
+function NovoDirigenteModal({ onClose, onCreate }){
+  const [nome,setNome]=useState("");
+  const [email,setEmail]=useState("");
+  const [userId,setUserId]=useState("");
+  const [cargo,setCargo]=useState("");
+  const [errs,setErrs]=useState({});
+  const [busy,setBusy]=useState(false);
+  const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const criar=async ()=>{
+    const e={};
+    if(!nome.trim()) e.nome="Informe o nome.";
+    if(!validaEmail(email)) e.email="E-mail inválido.";
+    if(!UUID_RE.test(userId.trim())) e.userId="Cole o UID do usuário (veja onde pegar acima).";
+    if(!cargo) e.cargo="Escolha a função do dirigente.";
+    setErrs(e);
+    if(Object.keys(e).length) return;
+    setBusy(true);
+    const r=await onCreate({nome:nome.trim(),email:email.trim(),cargo,user_id:userId.trim()});
+    setBusy(false);
+    if(r&&r.error) setErrs(x=>({...x,userId:"Não deu certo — confira se o UID está correto e se essa pessoa já não é dirigente."}));
+  };
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:480,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
+      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Novo dirigente</h3>
+      <p style={{margin:"0 0 16px",fontSize:14,color:"var(--text-2)"}}>O dirigente terá acesso completo à ferramenta.</p>
+
+      <div style={{display:"flex",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",marginBottom:18,fontSize:13,color:"var(--text-2)"}}>
+        <Icon name="info" size={16}/>
+        <div><b>Antes de preencher:</b> crie o login dessa pessoa no painel do Supabase — <b>Authentication → Users → Add user</b> (marque "Auto Confirm User"). Depois copie o <b>UID</b> gerado e cole abaixo.</div>
+      </div>
+
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nome</label>
+      <Input value={nome} onChange={e=>{setNome(e.target.value);setErrs(x=>({...x,nome:null}));}} error={!!errs.nome} placeholder="Nome do dirigente"/>
+      {errs.nome && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.nome}</div>}
+      <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail</label>
+      <Input type="email" value={email} onChange={e=>{setEmail(e.target.value);setErrs(x=>({...x,email:null}));}} error={!!errs.email} placeholder="dirigente@email.com"/>
+      {errs.email && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.email}</div>}
+      <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>UID do usuário</label>
+      <Input value={userId} onChange={e=>{setUserId(e.target.value);setErrs(x=>({...x,userId:null}));}} error={!!errs.userId} placeholder="Ex: 1baf57ea-5b8d-4f52-a6eb-bb10c7bf29b8"/>
+      {errs.userId && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.userId}</div>}
+      <div style={{height:16}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:8}}>Função <span style={{color:"var(--text-3)",fontWeight:500}}>· equipe do MJC ou tio dirigente</span></label>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {CARGOS_DIRIGENTE.map(c=><button key={c} type="button" onClick={()=>{setCargo(c);setErrs(x=>({...x,cargo:null}));}} style={chipStyle(cargo===c)}>{c}</button>)}
+      </div>
+      {errs.cargo && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600}}>{errs.cargo}</div>}
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:24}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Cadastrando...":"Cadastrar dirigente"}</Button>
+      </div>
+    </div>
+  </div>;
+}
+
+function Dirigentes({ user }){
+  const { dirigentes, addDirigente, removeDirigente } = useStore();
+  const [modal,setModal]=useState(false);
+  const [confirmar,setConfirmar]=useState(null); // dirigente a remover
+  return <div>
+    <Header title="Dirigentes" sub={dirigentes.length+" com acesso de administrador"}
+      right={<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Cadastrar dirigente</Button>}/>
+
+    <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
+      <Icon name="shield" size={16}/>Dirigentes têm acesso total à ferramenta. Cadastre apenas pessoas da coordenação.
+    </div>
+
+    <Card pad="0" style={{overflow:"hidden"}}>
+      {dirigentes.map((d,i)=>{
+        const isSelf = d.user_id===user.id || (d.email||"").toLowerCase()===(user.email||"").toLowerCase();
+        const last = dirigentes.length<=1;
+        return <div key={d.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderBottom:i<dirigentes.length-1?"1px solid var(--hairline)":"none"}}>
+          <span style={{width:44,height:44,borderRadius:99,background:d.cargo?cargoColor(d.cargo):"var(--brand-brown)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={d.cargo?cargoIcon(d.cargo):"shield-check"} size={20}/></span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{d.nome}{isSelf && <Badge tone="brand">Você</Badge>}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
+              {d.cargo && <Tag color={cargoColor(d.cargo)}>{d.cargo}</Tag>}
+              <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="mail" size={13}/>{d.email}</span>
+            </div>
+          </div>
+          <Button variant="ghost" iconLeft={<Icon name="trash-2" size={15}/>}
+            onClick={()=>setConfirmar(d)}
+            disabled={isSelf||last}
+            style={{opacity:(isSelf||last)?.4:1,color:"var(--brand-red)"}}
+            title={isSelf?"Você não pode remover a si mesmo":last?"Precisa haver ao menos um dirigente":"Remover"}>Remover</Button>
+        </div>;
+      })}
+    </Card>
+
+    {modal && <NovoDirigenteModal onClose={()=>setModal(false)} onCreate={async d=>{ const r=await addDirigente(d); if(!r.error) setModal(false); return r; }}/>}
+    {confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={()=>setConfirmar(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:400,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+        <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Remover dirigente</h3>
+        <p style={{margin:"0 0 22px",fontSize:14,color:"var(--text-2)"}}>Remover o acesso de <b>{confirmar.nome}</b> ({confirmar.email})? Ele não conseguirá mais entrar como dirigente.</p>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Button variant="ghost" onClick={()=>setConfirmar(null)}>Cancelar</Button>
+          <Button variant="primary" onClick={()=>{ removeDirigente(confirmar.id); setConfirmar(null); }} style={{background:"var(--brand-red)"}} iconLeft={<Icon name="trash-2" size={15}/>}>Remover</Button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+/* ======================================================================
+   SHELL
+   ====================================================================== */
+const NAV=[
+  {id:"inicio",label:"Início",icon:"home"},
+  {id:"jovens",label:"Jovens",icon:"users"},
+  {id:"tios",label:"Tios",icon:"heart-handshake"},
+  {id:"montagem",label:"Montagem",icon:"layout-grid"},
+  {id:"form",label:"Novo formulário",icon:"file-plus-2"},
+  {id:"relatorios",label:"Relatórios",icon:"bar-chart-3"},
+  {id:"dirigentes",label:"Dirigentes",icon:"shield-check"},
+];
+function App({ user, onLogout }){
+  const { addJovem } = useStore();
+  const [view,setView]=useState("inicio");
+  const [cadOpen,setCadOpen]=useState(false);
+  useLucide();
+  const isMobile=useIsMobile();
+  const [person,setPerson]=useState(null);
+  const [teamFilter,setTeamFilter]=useState(null);
+  const openCad=()=>setCadOpen(true);
+  const openPerson=p=>setPerson(p);
+  const openTeam=t=>{ setTeamFilter(t); setView("jovens"); };
+  const clearTeam=()=>setTeamFilter(null);
+  const go=id=>{ setTeamFilter(null); setView(id); };
+  const saveFicha=async f=>{ await addJovem(formToJovem(f)); setCadOpen(false); setTeamFilter(null); setView("jovens"); };
+  let screen;
+  if(view==="jovens") screen=<Jovens onNovo={openCad} onOpenPerson={openPerson} teamFilter={teamFilter} onClearTeam={clearTeam}/>;
+  else if(view==="tios") screen=<Tios onNovo={openCad} onOpenPerson={openPerson}/>;
+  else if(view==="montagem") screen=<Montagem/>;
+  else if(view==="form") screen=<NovoFormulario/>;
+  else if(view==="relatorios") screen=<Relatorios/>;
+  else if(view==="dirigentes") screen=<Dirigentes user={user}/>;
+  else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam}/>;
+
+  const overlays = <>
+    {cadOpen && <FichaForm onClose={()=>setCadOpen(false)} onSave={saveFicha}/>}
+    {person && <PersonDetail person={person} onClose={()=>setPerson(null)}/>}
+  </>;
+
+  if(isMobile){
+    const items=[...NAV, {id:"__logout",label:"Sair",icon:"log-out"}];
+    return (
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+        <main style={{flex:1,minWidth:0,background:"var(--surface-2)",padding:"18px 16px 84px"}}>{screen}</main>
+        <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"var(--surface)",boxShadow:"0 -6px 20px rgba(74,46,26,.12)",display:"flex",alignItems:"center",gap:2,padding:"8px 6px",overflowX:"auto",zIndex:40}}>
+          {items.map(it=>{const on=it.id===view;
+            return <button key={it.id} title={it.label} onClick={()=> it.id==="__logout" ? onLogout() : go(it.id)} style={{flex:"0 0 auto",minWidth:60,border:"none",cursor:"pointer",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",color:on?"var(--brand-brown)":"var(--text-2)"}}>
+              <span style={{width:38,height:32,borderRadius:99,display:"inline-flex",alignItems:"center",justifyContent:"center",background:on?"var(--brand-brown-soft)":"transparent"}}><Icon name={it.icon} size={19}/></span>
+              <span style={{fontSize:10,fontWeight:on?700:500,whiteSpace:"nowrap"}}>{it.label}</span>
+            </button>;})}
+        </nav>
+        {overlays}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{display:"flex",gap:18,height:"calc(100vh - 44px)",minHeight:600}}>
+      <nav style={{width:"var(--rail-w)",background:"var(--surface)",borderRadius:"var(--r-2xl)",boxShadow:"var(--shadow-rail)",padding:"16px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:6,flex:"0 0 auto"}}>
+        <span style={{width:48,height:48,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14,boxShadow:"var(--shadow-xs)"}}>
+          <img src="../design_system_unzip/ejc_claude/assets/ejc-logo.png" alt="EJC" style={{width:"92%",height:"92%",objectFit:"contain"}}/>
+        </span>
+        <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+          {NAV.map(it=>{const on=it.id===view;
+            return <button key={it.id} title={it.label} onClick={()=>go(it.id)} style={{position:"relative",width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20,background:on?"var(--brand-brown)":"transparent",color:on?"var(--on-brand)":"var(--text-2)",transition:"all .15s"}}>
+              <Icon name={it.icon} size={20}/>
+            </button>;})}
+        </div>
+        <button title={"Sair"+(user?" ("+user.email+")":"")} onClick={onLogout} style={{width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",background:"transparent",color:"var(--text-2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name="log-out" size={20}/></button>
+        <Avatar name={user?user.nome||"Admin":"Você"} size={44} title={user?user.email:""}/>
+      </nav>
+      <main style={{flex:1,minWidth:0,background:"var(--surface-2)",borderRadius:"var(--r-2xl)",padding:"28px 30px",overflow:"auto"}}>{screen}</main>
+      {overlays}
+    </div>
+  );
+}
+/* ======================================================================
+   AUTENTICAÇÃO — telas de acesso
+   ====================================================================== */
+function AuthShell({ children }){
+  useLucide();
+  return <div style={{minHeight:"calc(100vh - 44px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+    <div style={{width:420,maxWidth:"100%"}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:22}}>
+        <span style={{width:76,height:76,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"var(--shadow-sm)",background:"var(--surface)",marginBottom:14}}>
+          <img src="../design_system_unzip/ejc_claude/assets/ejc-logo.png" alt="EJC" style={{width:"90%",height:"90%",objectFit:"contain"}}/>
+        </span>
+        <div className="mono-overline">EJC CALIFÓRNIA · BH</div>
+        <h1 style={{margin:"6px 0 0",fontSize:24,fontWeight:800,letterSpacing:"-.02em"}}>Base de Dados</h1>
+      </div>
+      <Card pad="26px">{children}</Card>
+    </div>
+  </div>;
+}
+function AuthInput({ error, ...p }){
+  const [foc,setFoc]=useState(false);
+  const ring = error ? "0 0 0 3px color-mix(in oklch, var(--danger) 30%, transparent)" : foc?"var(--ring)":"none";
+  return <input {...p} onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)} style={{width:"100%",border:"none",background:error?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",boxShadow:ring,transition:"box-shadow .15s, background .15s"}}/>;
+}
+
+function LoginScreen({ onGoSignup }){
+  const [email,setEmail]=useState("");
+  const [senha,setSenha]=useState("");
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  const entrar=async ()=>{
+    if(busy) return;
+    setBusy(true); setErr("");
+    const r=await Auth.login(email,senha);
+    setBusy(false);
+    if(!r.ok) setErr(r.error);
+    // sucesso: o Gate detecta a sessão sozinho (onAuthStateChange) e troca de tela
+  };
+  return <AuthShell>
+    <h2 style={{margin:"0 0 4px",fontSize:19,fontWeight:800}}>Entrar</h2>
+    <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Acesse com seu e-mail e senha.</p>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail</label>
+    <AuthInput type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} error={!!err} placeholder="voce@email.com"/>
+    <div style={{height:14}}/>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Senha</label>
+    <AuthInput type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErr("");}} error={!!err} placeholder="Sua senha" onKeyDown={e=>{if(e.key==="Enter")entrar();}}/>
+    {err && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{err}</div>}
+    <div style={{marginTop:22}}>
+      <Button variant="primary" onClick={entrar} disabled={busy} style={{width:"100%",justifyContent:"center",opacity:busy?.7:1}} iconLeft={<Icon name="log-in" size={16}/>}>{busy?"Entrando...":"Entrar"}</Button>
+    </div>
+    <div style={{marginTop:16,textAlign:"center",fontSize:13,color:"var(--text-2)"}}>
+      Primeiro acesso? <button onClick={onGoSignup} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontFamily:"var(--font-sans)",fontSize:13}}>Criar minha conta</button>
+    </div>
+  </AuthShell>;
+}
+
+function SignupScreen({ onGoLogin }){
+  const [email,setEmail]=useState("");
+  const [senha,setSenha]=useState("");
+  const [senha2,setSenha2]=useState("");
+  const [errs,setErrs]=useState({});
+  const [busy,setBusy]=useState(false);
+  const [confirmSent,setConfirmSent]=useState(false);
+  const criar=async ()=>{
+    const e={};
+    if(!validaEmail(email)) e.email="Informe um e-mail válido.";
+    if(!senha || senha.length<4) e.senha="A senha precisa de ao menos 4 caracteres.";
+    if(senha2!==senha) e.senha2="As senhas não conferem.";
+    setErrs(e);
+    if(Object.keys(e).length) return;
+    setBusy(true);
+    const r=await Auth.signup(email.trim(),senha);
+    setBusy(false);
+    if(!r.ok){ setErrs(x=>({...x,email:r.error})); return; }
+    if(r.needsConfirm) setConfirmSent(true);
+    // senão: o Gate detecta a sessão sozinho (onAuthStateChange) e troca de tela
+  };
+  if(confirmSent) return <AuthShell>
+    <div style={{textAlign:"center"}}>
+      <span style={{width:56,height:56,borderRadius:99,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><Icon name="mail-check" size={26}/></span>
+      <h2 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Confirme seu e-mail</h2>
+      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Enviamos um link de confirmação para <b>{email}</b>. Clique nele e depois volte pra entrar.</p>
+      <Button variant="secondary" onClick={onGoLogin} style={{width:"100%",justifyContent:"center"}}>Já confirmei, entrar</Button>
+    </div>
+  </AuthShell>;
+  return <AuthShell>
+    <h2 style={{margin:"0 0 4px",fontSize:19,fontWeight:800}}>Criar minha conta</h2>
+    <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Depois você preenche sua ficha de cadastro.</p>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail</label>
+    <AuthInput type="email" value={email} onChange={e=>{setEmail(e.target.value);setErrs(x=>({...x,email:null}));}} error={!!errs.email} placeholder="voce@email.com"/>
+    {errs.email && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.email}</div>}
+    <div style={{height:14}}/>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Senha</label>
+    <AuthInput type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErrs(x=>({...x,senha:null}));}} error={!!errs.senha} placeholder="Crie uma senha"/>
+    {errs.senha && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha}</div>}
+    <div style={{height:14}}/>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Confirmar senha</label>
+    <AuthInput type="password" value={senha2} onChange={e=>{setSenha2(e.target.value);setErrs(x=>({...x,senha2:null}));}} error={!!errs.senha2} placeholder="Repita a senha" onKeyDown={e=>{if(e.key==="Enter")criar();}}/>
+    {errs.senha2 && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha2}</div>}
+    <div style={{marginTop:22}}>
+      <Button variant="primary" onClick={criar} disabled={busy} style={{width:"100%",justifyContent:"center",opacity:busy?.7:1}} iconLeft={<Icon name="user-plus" size={16}/>}>{busy?"Criando...":"Criar conta"}</Button>
+    </div>
+    <div style={{marginTop:16,textAlign:"center",fontSize:13,color:"var(--text-2)"}}>
+      Já tem conta? <button onClick={onGoLogin} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontFamily:"var(--font-sans)",fontSize:13}}>Entrar</button>
+    </div>
+  </AuthShell>;
+}
+
+/* ======================================================================
+   ÁREA DO MEMBRO — só a própria ficha
+   ====================================================================== */
+function MemberArea({ user, onLogout }){
+  const { jovens, addJovem, updateJovem, loading } = useStore();
+  const meu = jovens[0] || null; // RLS já garante que só a própria linha chega até aqui
+  const [manualEdit,setManualEdit]=useState(false);
+  useLucide();
+
+  const salvar=async (f)=>{
+    if(meu){ await updateJovem(meu.id, fichaToFields(f)); }
+    else {
+      const novo=formToJovem({...f, email:f.email||user.email});
+      await addJovem({...novo, user_id:user.id});
+    }
+    setManualEdit(false);
+  };
+
+  if(loading) return <div style={{minHeight:"calc(100vh - 44px)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text-2)"}}>Carregando...</div>;
+
+  const editing = manualEdit || !meu;
+
+  if(editing) return <FichaForm
+    initial={meu?meu.ficha:{email:user.email}}
+    selfId={meu?meu.id:null}
+    overline={meu?"ATUALIZAR CADASTRO":"MEU CADASTRO"}
+    title={meu?"Atualizar minha ficha":"Preencher minha ficha"}
+    saveLabel={meu?"Salvar alterações":"Concluir cadastro"}
+    onClose={()=>{ if(meu) setManualEdit(false); else onLogout(); }}
+    onSave={salvar}/>;
+
+  return <div style={{minHeight:"calc(100vh - 44px)"}}>
+    <div style={{maxWidth:820,margin:"0 auto",padding:"18px 22px",display:"flex",alignItems:"center",gap:14}}>
+      <span style={{width:44,height:44,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"var(--shadow-xs)",background:"var(--surface)"}}>
+        <img src="../design_system_unzip/ejc_claude/assets/ejc-logo.png" alt="EJC" style={{width:"90%",height:"90%",objectFit:"contain"}}/>
+      </span>
+      <div style={{marginRight:"auto"}}>
+        <div className="mono-overline">MEU CADASTRO</div>
+        <div style={{fontSize:15,fontWeight:700}}>{meu?meu.n:user.email}</div>
+      </div>
+      <Button variant="secondary" iconLeft={<Icon name="log-out" size={16}/>} onClick={onLogout}>Sair</Button>
+    </div>
+    <div style={{maxWidth:820,margin:"0 auto",padding:"6px 22px 40px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
+        <Icon name="shield-check" size={16}/>Você está na sua área pessoal. Aqui você só vê e atualiza a sua própria ficha.
+      </div>
+      <PersonInlineDetail person={meu} onEdit={()=>setManualEdit(true)}/>
+    </div>
+  </div>;
+}
+
+// visualização da própria ficha com botão de editar (reaproveita as seções do PersonDetail via um wrapper simples)
+function PersonInlineDetail({ person, onEdit }){
+  return <div>
+    <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+      <Button variant="primary" iconLeft={<Icon name="pencil" size={15}/>} onClick={onEdit}>Atualizar cadastro</Button>
+    </div>
+    <PersonDetailBody person={person}/>
+  </div>;
+}
+
+/* ======================================================================
+   GATE — sessão do Supabase → resolve papel (dirigente/membro) → App ou MemberArea
+   ====================================================================== */
+function Gate(){
+  const [state,setState]=useState({loading:true, session:null});
+  const [mode,setMode]=useState("login"); // login | signup
+
+  useEffect(()=>{
+    let active=true;
+    supabase.auth.getSession().then(({data})=>{ if(active) setState({loading:false, session:data.session}); });
+    const { data:sub } = supabase.auth.onAuthStateChange((_event, session)=>{
+      setState({loading:false, session});
+    });
+    return ()=>{ active=false; sub.subscription.unsubscribe(); };
+  },[]);
+
+  if(state.loading) return <AuthShell><div style={{textAlign:"center",padding:"30px 0",color:"var(--text-2)"}}>Carregando...</div></AuthShell>;
+
+  if(!state.session){
+    if(mode==="signup") return <SignupScreen onGoLogin={()=>setMode("login")}/>;
+    return <LoginScreen onGoSignup={()=>setMode("signup")}/>;
+  }
+  return <AuthedGate session={state.session} onLogout={Auth.logout}/>;
+}
+
+// depois de logado: descobre se é dirigente (linha em `dirigentes`) ou membro comum
+function AuthedGate({ session, onLogout }){
+  const [roleInfo,setRoleInfo]=useState(null);
+  useEffect(()=>{
+    let active=true;
+    (async ()=>{
+      const { data } = await supabase.from("dirigentes").select("*").eq("user_id",session.user.id).maybeSingle();
+      if(!active) return;
+      setRoleInfo(data ? { role:"admin", nome:data.nome, cargo:data.cargo } : { role:"membro" });
+    })();
+    return ()=>{ active=false; };
+  },[session.user.id]);
+
+  if(!roleInfo) return <AuthShell><div style={{textAlign:"center",padding:"30px 0",color:"var(--text-2)"}}>Carregando...</div></AuthShell>;
+
+  const user = { id:session.user.id, email:session.user.email, role:roleInfo.role, nome:roleInfo.nome, cargo:roleInfo.cargo };
+  return <StoreProvider user={user}>
+    {user.role==="admin" ? <App user={user} onLogout={onLogout}/> : <MemberArea user={user} onLogout={onLogout}/>}
+  </StoreProvider>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Gate/>);
+</script>
+<script>
+  (function(){
+    const src = document.getElementById("appcode").textContent;
+    const out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+    (0, eval)(out);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!-- @dsCard group="Components" viewport="700x240" name="Formulários" subtitle="Switch · SearchInput · Select · SegmentedControl" -->
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:var(--bg)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel" data-presets="react">
+const NS = window.__DS__ || Object.values(window).find(o => o && o.Switch && o.SegmentedControl) || window;
+const { Switch, SearchInput, Select, SegmentedControl } = NS;
+function Demo(){
+  const [on,setOn]=React.useState(true);
+  const [tab,setTab]=React.useState("Equipes");
+  const [top,setTop]=React.useState("Membros");
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:20}}>
+      <div style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+        <Switch checked={on} onChange={setOn}/>
+        <Switch checked={!on} onChange={()=>setOn(!on)}/>
+        <Select value="Todas as equipes"/>
+        <Select label="Ordenar" value="Nota" variant="plain"/>
+      </div>
+      <SearchInput placeholder="Buscar membro, equipe ou palestra" icon="⌕"/>
+      <div style={{display:'flex',gap:24,alignItems:'center',flexWrap:'wrap'}}>
+        <SegmentedControl variant="pill" options={["Todos","Equipes","Palestras"]} value={tab} onChange={setTab}/>
+        <SegmentedControl variant="underline" options={["Membros","Equipes","Avaliações"]} value={top} onChange={setTop}/>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body></html>
