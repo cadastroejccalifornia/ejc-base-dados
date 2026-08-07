@@ -101,7 +101,9 @@ const MJC_COLOR={"Ficha":"var(--cat-blue)","Montagem":"var(--cat-terracotta)","F
 // tabs de montagem: Coordenação Geral, Sala, Compras, depois o resto em ordem alfabética
 const MONTAGEM_TABS=["Coordenação Geral","Sala","Compras","Acolhida","Cafezinho","Cozinha","Liturgia Externa","Liturgia Interna","Moita","Ordem e Limpeza","Recepção ao Palestrante","Secretaria","Tios Circulistas","Visitação Externa"];
 
-const EJC_YEARS=["XXXI EJC (2026)","XXX EJC (2025)","XXIX EJC (2024)","XXVIII EJC (2023)","XXVII EJC (2022)","XXVI EJC (2019)"];
+const EJC_YEARS=["XXXI EJC (2026)","XXX EJC (2025)","XXIX EJC (2024)","XXVIII EJC (2023)","XXVII EJC (2022)","XXVI EJC (2019)","XXV EJC (2018)","XXIV EJC (2017)","XXIII EJC (2016)","XXII EJC (2015)","XXI EJC (2014)","XX EJC (2013)","XIX EJC (2012)","XVIII EJC (2011)","XVII EJC (2010)","XVI EJC (2009)","XV EJC (2008)","XIV EJC (2007)","XIII EJC (2006)","XII EJC (2005)","XI EJC (2004)","X EJC (2003)","IX EJC (2002)","VIII EJC (2001)","VII EJC (2000)","VI EJC (1999)","V EJC (1998)","IV EJC (1997)","III EJC (1996)","II EJC (1995)","I EJC (1993)"];
+// extrai o ano numérico de um item do EJC_YEARS, ex: "XXVIII EJC (2023)" -> 2023
+const anoDoEjc = s => { const m=/\((\d{4})\)/.exec(s||""); return m?parseInt(m[1]):null; };
 
 const mjcColor = t => MJC_COLOR[t] || "var(--cat-brown)";
 
@@ -117,10 +119,10 @@ const useStore=()=>React.useContext(StoreContext);
 
 // ---------- mapeamento: linha do banco <-> forma usada nas telas ----------
 function rowToJovem(r){
-  return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, mjc:r.mjc, ejc:r.ejc, end:r.endereco, inst:r.instrumento, ativo:r.ativo, ficha:r.ficha };
+  return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, mjc:r.mjc, ejc:r.ejc, end:r.endereco, inst:r.instrumento, ativo:r.ativo, foto:r.foto, ficha:r.ficha };
 }
 function jovemToRow(j){
-  const row={ nome:j.n, telefone:j.tel, mjc:j.mjc, ejc:j.ejc, endereco:j.end, instrumento:j.inst, ativo:j.ativo, ficha:j.ficha };
+  const row={ nome:j.n, telefone:j.tel, mjc:j.mjc, ejc:j.ejc, endereco:j.end, instrumento:j.inst, ativo:j.ativo, foto:j.foto||null, ficha:j.ficha };
   if(j.user_id) row.user_id=j.user_id;
   return row;
 }
@@ -136,7 +138,7 @@ function fichaToFields(f){
   const mjc = f.mjcAtual && f.mjcAtual!=="Não estou em nenhuma" ? f.mjcAtual : "—";
   const ejc = f.fezCalifornia ? (f.anoEjc||"—") : (f.qualEjc||"—");
   const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
-  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:f.endereco||"—", inst, ficha:f };
+  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:f.endereco||"—", inst, foto:f.foto||null, ficha:f };
 }
 // converte a Ficha preenchida numa nova linha da base
 function formToJovem(f){
@@ -204,10 +206,16 @@ function StoreProvider({ user, children }){
       if(!error) setJovens(l=>l.map(j=>j.id===id?rowToJovem(data):j));
       return { data: data?rowToJovem(data):null, error };
     },
-    addDirigente: async (d)=>{
-      const { data, error } = await supabase.from("dirigentes").insert({ nome:d.nome, email:d.email, cargo:d.cargo, user_id:d.user_id }).select().single();
-      if(!error) setDirigentes(l=>[...l,rowToDirigente(data)]);
-      return { data: data?rowToDirigente(data):null, error };
+    // convida um novo dirigente: cria o convite (user_id ainda nulo) e manda um e-mail de acesso.
+    // quando a pessoa entrar pela primeira vez com esse e-mail, o AuthedGate reivindica o convite
+    // automaticamente (ligando user_id) e a obriga a completar a própria ficha.
+    inviteDirigente: async (d)=>{
+      const { data, error } = await supabase.from("dirigentes").insert({ nome:d.nome, email:d.email, cargo:d.cargo }).select().single();
+      if(error) return { data:null, error };
+      setDirigentes(l=>[...l,rowToDirigente(data)]);
+      const redirect = window.location.origin + window.location.pathname;
+      const { error: otpError } = await supabase.auth.signInWithOtp({ email:d.email, options:{ emailRedirectTo: redirect } });
+      return { data: rowToDirigente(data), error: otpError||null };
     },
     removeDirigente: async (id)=>{
       const { error } = await supabase.from("dirigentes").delete().eq("id",id);
@@ -280,7 +288,7 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
           {ultimos.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
           {ultimos.map((p,i)=>(
             <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
-              <Avatar name={p.n} size={48}/>
+              <Avatar src={p.foto} name={p.n} size={48}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{p.n}<Icon name="chevron-right" size={15}/></div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
@@ -347,7 +355,7 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
         <tbody>
           {list.map((r,i)=>(
             <tr key={i} style={{borderBottom:"1px solid var(--hairline)"}}>
-              <td style={{padding:"10px 18px"}}><Avatar name={r.n} size={38}/></td>
+              <td style={{padding:"10px 18px"}}><Avatar src={r.foto} name={r.n} size={38}/></td>
               <td style={{padding:"10px 18px",fontWeight:600,whiteSpace:"nowrap"}}>
                 <button onClick={()=>onOpenPerson&&onOpenPerson(r)} title="Ver ficha completa" style={{border:"none",background:"transparent",cursor:"pointer",font:"inherit",fontWeight:600,color:"var(--brand-brown)",padding:0,display:"inline-flex",alignItems:"center",gap:5}}>{r.n}</button>
               </td>
@@ -406,7 +414,7 @@ function AddPersonCell({ pool, onPick }){
     {q && <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:"var(--surface)",borderRadius:"var(--r-md)",boxShadow:"var(--shadow-md)",zIndex:20,overflow:"hidden"}}>
       {results.length?results.map((p,i)=>(
         <div key={i} onMouseDown={()=>onPick(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          <Avatar name={p.n} size={30}/><span style={{fontSize:13,fontWeight:600}}>{p.n}</span>
+          <Avatar src={p.foto} name={p.n} size={30}/><span style={{fontSize:13,fontWeight:600}}>{p.n}</span>
         </div>
       )):<div style={{padding:"12px",fontSize:13,color:"var(--text-3)"}}>Ninguém encontrado.</div>}
     </div>}
@@ -458,7 +466,7 @@ function MontagemSheet({ montagem, onBack }){
                   return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)"}}>
                     <td style={{padding:"8px 14px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
                     {person?<>
-                      <td style={{padding:"8px 14px"}}><Avatar name={person.n} size={34}/></td>
+                      <td style={{padding:"8px 14px"}}><Avatar src={person.foto} name={person.n} size={34}/></td>
                       <td style={{padding:"8px 14px",fontWeight:600,whiteSpace:"nowrap"}}>{person.n}</td>
                       <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.tel}</td>
                       <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.ejc}</td>
@@ -585,7 +593,7 @@ function PersonDetailBody({ person }){
       {/* Cabeçalho com avatar e contatos */}
       <Card style={{marginBottom:18}}>
         <div style={{display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
-          <Avatar name={person.n} size={72}/>
+          <Avatar src={person.foto} name={person.n} size={72}/>
           <div style={{flex:1,minWidth:200}}>
             <div style={{fontSize:20,fontWeight:800,letterSpacing:"-.01em"}}>{person.n}</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
@@ -759,6 +767,64 @@ function validaCPF(cpf){
 const validaEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e||"").trim());
 const validaTelefone = t => { const d=onlyDigits(t); return d.length===10||d.length===11; };
 
+// redimensiona a imagem no navegador (lado maior = 480px) antes de enviar — poupa dados no celular
+function resizeImagem(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const max=480;
+      let {width:w,height:h}=img;
+      if(w>h && w>max){ h=Math.round(h*max/w); w=max; } else if(h>=w && h>max){ w=Math.round(w*max/h); h=max; }
+      const canvas=document.createElement("canvas");
+      canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Não foi possível processar a imagem.")),"image/jpeg",0.85);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("Arquivo de imagem inválido.")); };
+    img.src=url;
+  });
+}
+// envia a foto pro Supabase Storage e devolve a URL pública
+async function enviarFoto(file){
+  const blob=await resizeImagem(file);
+  const path=uid()+".jpg";
+  const { error } = await supabase.storage.from("fotos").upload(path, blob, { contentType:"image/jpeg", upsert:true });
+  if(error) throw error;
+  const { data } = supabase.storage.from("fotos").getPublicUrl(path);
+  return data.publicUrl;
+}
+function PhotoUpload({ value, onChange, name }){
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const inputRef=useRef(null);
+  const escolher=async e=>{
+    const file=e.target.files&&e.target.files[0];
+    e.target.value="";
+    if(!file) return;
+    if(!/^image\//.test(file.type)){ setErr("Escolha um arquivo de imagem."); return; }
+    setErr(""); setBusy(true);
+    try{ const url=await enviarFoto(file); onChange(url); }
+    catch(err){ setErr("Não foi possível enviar a foto. Tenta de novo."); }
+    setBusy(false);
+  };
+  return <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+    <span style={{position:"relative",width:84,height:84,flex:"0 0 auto"}}>
+      <Avatar src={value} name={name} size={84}/>
+      {busy && <span style={{position:"absolute",inset:0,borderRadius:"50%",background:"rgba(42,36,31,.45)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}><Icon name="loader-2" size={20}/></span>}
+    </span>
+    <div>
+      <div style={{display:"flex",gap:8}}>
+        <Button type="button" variant="secondary" iconLeft={<Icon name="camera" size={15}/>} onClick={()=>inputRef.current&&inputRef.current.click()} disabled={busy}>{value?"Trocar foto":"Adicionar foto"}</Button>
+        {value && <IconButton label="Remover foto" variant="soft" onClick={()=>onChange(null)}><Icon name="x" size={16}/></IconButton>}
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" onChange={escolher} style={{display:"none"}}/>
+      {err && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{err}</div>}
+    </div>
+  </div>;
+}
+
 function chipStyle(active){
   return {border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:600,padding:"9px 15px",borderRadius:"var(--r-pill)",transition:"all .15s",
     background:active?"var(--brand-brown)":"var(--surface-2)",color:active?"var(--on-brand)":"var(--text-2)",boxShadow:active?"var(--shadow-xs)":"none"};
@@ -832,12 +898,16 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     if(!f.nome || !f.nome.trim()) errs.nome="Informe o nome completo.";
     if(!f.whats) errs.whats="Informe o WhatsApp.";
     else if(!validaTelefone(f.whats)) errs.whats="WhatsApp inválido — use (DD) e 8 ou 9 dígitos.";
-    if(f.cpf && !validaCPF(f.cpf)) errs.cpf="CPF inválido.";
+    if(!f.cpf) errs.cpf="Informe o CPF.";
+    else if(!validaCPF(f.cpf)) errs.cpf="CPF inválido.";
     else if(dupCpfMsg) errs.cpf=dupCpfMsg;
     if(f.email && !validaEmail(f.email)) errs.email="E-mail inválido.";
     else if(dupEmailMsg) errs.email=dupEmailMsg;
     if(!f.paiFalecido && f.paiTel && !validaTelefone(f.paiTel)) errs.paiTel="Telefone inválido.";
     if(!f.maeFalecida && f.maeTel && !validaTelefone(f.maeTel)) errs.maeTel="Telefone inválido.";
+    if(f.fezCalifornia!==true && f.fezCalifornia!==false) errs.fezCalifornia="Responda se fez EJC no Califórnia.";
+    else if(f.fezCalifornia===true && !f.anoEjc) errs.anoEjc="Selecione o ano que fez EJC.";
+    if(!f.mjcAtual) errs.mjcAtual="Selecione a equipe atual (ou 'Não estou em nenhuma').";
     setErrors(errs);
     if(Object.keys(errs).length){
       setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
@@ -867,13 +937,17 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 
     <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
 
+      <Card style={{marginBottom:18}}>
+        <PhotoUpload value={f.foto} name={f.nome} onChange={url=>set("foto",url)}/>
+      </Card>
+
       {/* 1. Dados pessoais */}
       <Section title="Dados pessoais" icon="user" color="var(--cat-blue)">
         <div style={grid2}>
           <Field label="Nome completo" required span error={errors.nome}><Input value={f.nome||""} onChange={e=>set("nome",e.target.value)} error={!!errors.nome} placeholder="Nome e sobrenome"/></Field>
           <Field label="Apelido"><Input value={f.apelido||""} onChange={e=>set("apelido",e.target.value)} placeholder="Como te chamam"/></Field>
           <Field label="Data de nascimento"><Input type="date" value={f.nasc||""} onChange={e=>set("nasc",e.target.value)}/></Field>
-          <Field label="CPF" error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
+          <Field label="CPF" required error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
           <Field label="WhatsApp" required error={errors.whats}><Input value={f.whats||""} onChange={e=>set("whats",maskTelefone(e.target.value))} error={!!errors.whats} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
           <Field label="E-mail" error={errors.email||dupEmailMsg}><Input type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} error={!!(errors.email||dupEmailMsg)} placeholder="voce@email.com"/></Field>
           <Field label="Instagram"><Input value={f.insta||""} onChange={e=>set("insta",maskInstagram(e.target.value))} placeholder="@seu.usuario"/></Field>
@@ -915,21 +989,21 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 
       {/* 4. EJC no Califórnia */}
       <Section title="EJC no Califórnia" icon="cross" color="var(--brand-brown)">
-        <Field label="Fez EJC no Califórnia?">
+        <Field label="Fez EJC no Califórnia?" required error={errors.fezCalifornia}>
           <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
         </Field>
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
           <div style={grid2}>
-            <Field label="Ano que fez EJC">
-              <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+            <Field label="Ano que fez EJC" required error={errors.anoEjc}>
+              <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:errors.anoEjc?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
                 <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
               </select>
             </Field>
             <Field label="Nome do casal de tio"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
           </div>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia" hint="Adicione cada ano/equipe e marque se foi coordenador">
-              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
+            <Field label="Equipes que serviu no Califórnia" hint="Adicione cada ano/equipe e marque se foi coordenador — só aparecem anos depois do seu EJC">
+              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} afterYear={anoDoEjc(f.anoEjc)}/>
             </Field>
           </div>
         </div>}
@@ -975,8 +1049,11 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
       </Section>
 
       {/* 6. MJC atual */}
-      <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)">
-        <ChipGroup options={[...MJC_TEAMS,"Não estou em nenhuma"]} value={f.mjcAtual} onChange={v=>set("mjcAtual",v)}/>
+      <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)" desc="Obrigatório — escolha uma equipe ou 'Não estou em nenhuma'">
+        <div className={errors.mjcAtual?"has-error":""}>
+          <ChipGroup options={[...MJC_TEAMS,"Não estou em nenhuma"]} value={f.mjcAtual} onChange={v=>set("mjcAtual",v)}/>
+          {errors.mjcAtual && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{errors.mjcAtual}</div>}
+        </div>
       </Section>
 
       {/* 7. Música */}
@@ -1021,11 +1098,13 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
   </div>;
 }
 
-function RepeatEquipes({ value, onChange }){
+function RepeatEquipes({ value, onChange, afterYear }){
   const [ano,setAno]=useState("");
   const [eq,setEq]=useState("");
   const [coord,setCoord]=useState(false);
   const add=()=>{ if(!ano||!eq)return; onChange([...value,{ano,eq,coord}]); setAno("");setEq("");setCoord(false); };
+  // só pode ter servido em anos DEPOIS do próprio EJC (nunca antes ou no mesmo ano)
+  const anosDisponiveis = afterYear ? EJC_YEARS.filter(y=>anoDoEjc(y)>afterYear) : EJC_YEARS;
   return <div>
     {value.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
       {value.map((r,i)=>(
@@ -1037,9 +1116,10 @@ function RepeatEquipes({ value, onChange }){
         </div>
       ))}
     </div>}
+    {afterYear && anosDisponiveis.length===0 && <p style={{fontSize:12,color:"var(--text-3)",marginBottom:10}}>Ainda não houve nenhum EJC depois do seu.</p>}
     <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
       <select value={ano} onChange={e=>setAno(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:150}}>
-        <option value="">Ano...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
+        <option value="">Ano...</option>{anosDisponiveis.map(y=><option key={y}>{y}</option>)}
       </select>
       <select value={eq} onChange={e=>setEq(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:170}}>
         <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
@@ -1351,23 +1431,20 @@ const cargoIcon = c => c==="Tio dirigente" ? "heart-handshake" : c==="Coordenaç
 function NovoDirigenteModal({ onClose, onCreate }){
   const [nome,setNome]=useState("");
   const [email,setEmail]=useState("");
-  const [userId,setUserId]=useState("");
   const [cargo,setCargo]=useState("");
   const [errs,setErrs]=useState({});
   const [busy,setBusy]=useState(false);
-  const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const criar=async ()=>{
     const e={};
     if(!nome.trim()) e.nome="Informe o nome.";
     if(!validaEmail(email)) e.email="E-mail inválido.";
-    if(!UUID_RE.test(userId.trim())) e.userId="Cole o UID do usuário (veja onde pegar acima).";
     if(!cargo) e.cargo="Escolha a função do dirigente.";
     setErrs(e);
     if(Object.keys(e).length) return;
     setBusy(true);
-    const r=await onCreate({nome:nome.trim(),email:email.trim(),cargo,user_id:userId.trim()});
+    const r=await onCreate({nome:nome.trim(),email:email.trim(),cargo});
     setBusy(false);
-    if(r&&r.error) setErrs(x=>({...x,userId:"Não deu certo — confira se o UID está correto e se essa pessoa já não é dirigente."}));
+    if(r&&r.error) setErrs(x=>({...x,email:"Não deu certo — confira o e-mail (pode já haver um convite pendente para ele)."}));
   };
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
     <div onClick={e=>e.stopPropagation()} style={{width:480,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
@@ -1375,8 +1452,8 @@ function NovoDirigenteModal({ onClose, onCreate }){
       <p style={{margin:"0 0 16px",fontSize:14,color:"var(--text-2)"}}>O dirigente terá acesso completo à ferramenta.</p>
 
       <div style={{display:"flex",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",marginBottom:18,fontSize:13,color:"var(--text-2)"}}>
-        <Icon name="info" size={16}/>
-        <div><b>Antes de preencher:</b> crie o login dessa pessoa no painel do Supabase — <b>Authentication → Users → Add user</b> (marque "Auto Confirm User"). Depois copie o <b>UID</b> gerado e cole abaixo.</div>
+        <Icon name="mail-check" size={16}/>
+        <div>A pessoa recebe um e-mail com um link de acesso nesse endereço. Ao clicar, ela já entra como dirigente e é levada direto pra completar a própria ficha.</div>
       </div>
 
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nome</label>
@@ -1386,10 +1463,6 @@ function NovoDirigenteModal({ onClose, onCreate }){
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail</label>
       <Input type="email" value={email} onChange={e=>{setEmail(e.target.value);setErrs(x=>({...x,email:null}));}} error={!!errs.email} placeholder="dirigente@email.com"/>
       {errs.email && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.email}</div>}
-      <div style={{height:14}}/>
-      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>UID do usuário</label>
-      <Input value={userId} onChange={e=>{setUserId(e.target.value);setErrs(x=>({...x,userId:null}));}} error={!!errs.userId} placeholder="Ex: 1baf57ea-5b8d-4f52-a6eb-bb10c7bf29b8"/>
-      {errs.userId && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.userId}</div>}
       <div style={{height:16}}/>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:8}}>Função <span style={{color:"var(--text-3)",fontWeight:500}}>· equipe do MJC ou tio dirigente</span></label>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -1398,32 +1471,34 @@ function NovoDirigenteModal({ onClose, onCreate }){
       {errs.cargo && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600}}>{errs.cargo}</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:24}}>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Cadastrando...":"Cadastrar dirigente"}</Button>
+        <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="mail-check" size={16}/>}>{busy?"Convidando...":"Convidar dirigente"}</Button>
       </div>
     </div>
   </div>;
 }
 
 function Dirigentes({ user }){
-  const { dirigentes, addDirigente, removeDirigente } = useStore();
+  const { dirigentes, inviteDirigente, removeDirigente } = useStore();
   const [modal,setModal]=useState(false);
   const [confirmar,setConfirmar]=useState(null); // dirigente a remover
+  const confirmados = dirigentes.filter(d=>d.user_id).length;
   return <div>
     <Header title="Dirigentes" sub={dirigentes.length+" com acesso de administrador"}
-      right={<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Cadastrar dirigente</Button>}/>
+      right={<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Convidar dirigente</Button>}/>
 
     <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
-      <Icon name="shield" size={16}/>Dirigentes têm acesso total à ferramenta. Cadastre apenas pessoas da coordenação.
+      <Icon name="shield" size={16}/>Dirigentes têm acesso total à ferramenta. Convide apenas pessoas da coordenação.
     </div>
 
     <Card pad="0" style={{overflow:"hidden"}}>
       {dirigentes.map((d,i)=>{
+        const pendente = !d.user_id;
         const isSelf = d.user_id===user.id || (d.email||"").toLowerCase()===(user.email||"").toLowerCase();
-        const last = dirigentes.length<=1;
+        const last = !pendente && confirmados<=1;
         return <div key={d.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderBottom:i<dirigentes.length-1?"1px solid var(--hairline)":"none"}}>
-          <span style={{width:44,height:44,borderRadius:99,background:d.cargo?cargoColor(d.cargo):"var(--brand-brown)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={d.cargo?cargoIcon(d.cargo):"shield-check"} size={20}/></span>
+          <span style={{width:44,height:44,borderRadius:99,background:pendente?"var(--surface-3)":(d.cargo?cargoColor(d.cargo):"var(--brand-brown)"),color:pendente?"var(--text-2)":"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={pendente?"mail-clock":(d.cargo?cargoIcon(d.cargo):"shield-check")} size={20}/></span>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{d.nome}{isSelf && <Badge tone="brand">Você</Badge>}</div>
+            <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{d.nome}{isSelf && <Badge tone="brand">Você</Badge>}{pendente && <Badge tone="warning" dot>Convite pendente</Badge>}</div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
               {d.cargo && <Tag color={cargoColor(d.cargo)}>{d.cargo}</Tag>}
               <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="mail" size={13}/>{d.email}</span>
@@ -1438,7 +1513,7 @@ function Dirigentes({ user }){
       })}
     </Card>
 
-    {modal && <NovoDirigenteModal onClose={()=>setModal(false)} onCreate={async d=>{ const r=await addDirigente(d); if(!r.error) setModal(false); return r; }}/>}
+    {modal && <NovoDirigenteModal onClose={()=>setModal(false)} onCreate={async d=>{ const r=await inviteDirigente(d); if(!r.error) setModal(false); return r; }}/>}
     {confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={()=>setConfirmar(null)}>
       <div onClick={e=>e.stopPropagation()} style={{width:400,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
         <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Remover dirigente</h3>
@@ -1722,13 +1797,21 @@ function Gate(){
   return <AuthedGate session={state.session} onLogout={Auth.logout}/>;
 }
 
-// depois de logado: descobre se é dirigente (linha em `dirigentes`) ou membro comum
+// depois de logado: descobre se é dirigente (linha em `dirigentes`) ou membro comum.
+// se existir um convite pendente (user_id nulo) com o mesmo e-mail, reivindica na hora.
 function AuthedGate({ session, onLogout }){
   const [roleInfo,setRoleInfo]=useState(null);
   useEffect(()=>{
     let active=true;
     (async ()=>{
-      const { data } = await supabase.from("dirigentes").select("*").eq("user_id",session.user.id).maybeSingle();
+      let { data } = await supabase.from("dirigentes").select("*").eq("user_id",session.user.id).maybeSingle();
+      if(!data){
+        const { data:pendente } = await supabase.from("dirigentes").select("*").is("user_id",null).eq("email",session.user.email).maybeSingle();
+        if(pendente){
+          const { data:reivindicado } = await supabase.from("dirigentes").update({user_id:session.user.id}).eq("id",pendente.id).select().single();
+          if(reivindicado) data=reivindicado;
+        }
+      }
       if(!active) return;
       setRoleInfo(data ? { role:"admin", nome:data.nome, cargo:data.cargo } : { role:"membro" });
     })();
@@ -1739,8 +1822,24 @@ function AuthedGate({ session, onLogout }){
 
   const user = { id:session.user.id, email:session.user.email, role:roleInfo.role, nome:roleInfo.nome, cargo:roleInfo.cargo };
   return <StoreProvider user={user}>
-    {user.role==="admin" ? <App user={user} onLogout={onLogout}/> : <MemberArea user={user} onLogout={onLogout}/>}
+    {user.role==="admin" ? <AdminGate user={user} onLogout={onLogout}/> : <MemberArea user={user} onLogout={onLogout}/>}
   </StoreProvider>;
+}
+
+// dirigente sem ficha própria ainda (convite recém-aceito) → obriga a preencher antes do painel
+function AdminGate({ user, onLogout }){
+  const { jovens, addJovem, loading } = useStore();
+  const meuJovem = jovens.find(j=>j.user_id===user.id);
+  useLucide();
+  if(loading) return <div style={{minHeight:"calc(100vh - 44px)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text-2)"}}>Carregando...</div>;
+  if(!meuJovem) return <FichaForm
+    initial={{email:user.email}}
+    overline="BEM-VINDO(A), DIRIGENTE"
+    title="Complete seu cadastro"
+    saveLabel="Concluir cadastro"
+    onClose={onLogout}
+    onSave={async f=>{ await addJovem({...formToJovem(f), user_id:user.id}); }}/>;
+  return <App user={user} onLogout={onLogout}/>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<Gate/>);
