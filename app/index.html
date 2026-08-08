@@ -210,11 +210,22 @@ function StoreProvider({ user, children }){
     // quando a pessoa entrar pela primeira vez com esse e-mail, o AuthedGate reivindica o convite
     // automaticamente (ligando user_id) e a obriga a completar a própria ficha.
     inviteDirigente: async (d)=>{
-      const { data, error } = await supabase.from("dirigentes").insert({ nome:d.nome, email:d.email, cargo:d.cargo }).select().single();
+      const email = (d.email||"").trim().toLowerCase();
+      const { data, error } = await supabase.from("dirigentes").insert({ nome:d.nome, email, cargo:d.cargo }).select().single();
       if(error) return { data:null, error };
       setDirigentes(l=>[...l,rowToDirigente(data)]);
       const redirect = window.location.origin + window.location.pathname;
-      const { error: otpError } = await supabase.auth.signInWithOtp({ email:d.email, options:{ emailRedirectTo: redirect } });
+      const { error: otpError } = await supabase.auth.signInWithOtp({ email, options:{ emailRedirectTo: redirect } });
+      return { data: rowToDirigente(data), error: otpError||null };
+    },
+    // corrige um convite ainda pendente (ex: e-mail digitado errado) e reenvia o link de acesso
+    updateDirigenteConvite: async (id,d)=>{
+      const email = (d.email||"").trim().toLowerCase();
+      const { data, error } = await supabase.from("dirigentes").update({ nome:d.nome, email, cargo:d.cargo }).eq("id",id).select().single();
+      if(error) return { data:null, error };
+      setDirigentes(l=>l.map(x=>x.id===id?rowToDirigente(data):x));
+      const redirect = window.location.origin + window.location.pathname;
+      const { error: otpError } = await supabase.auth.signInWithOtp({ email, options:{ emailRedirectTo: redirect } });
       return { data: rowToDirigente(data), error: otpError||null };
     },
     removeDirigente: async (id)=>{
@@ -1428,10 +1439,11 @@ const CARGOS_DIRIGENTE=["Coordenação Geral",...MJC_TEAMS,"Tio dirigente"];
 const cargoColor = c => c==="Tio dirigente" ? "var(--cat-terracotta)" : c==="Coordenação Geral" ? "var(--brand-brown)" : mjcColor(c);
 const cargoIcon = c => c==="Tio dirigente" ? "heart-handshake" : c==="Coordenação Geral" ? "shield-check" : (MJC_ICON[c]||"users");
 
-function NovoDirigenteModal({ onClose, onCreate }){
-  const [nome,setNome]=useState("");
-  const [email,setEmail]=useState("");
-  const [cargo,setCargo]=useState("");
+function NovoDirigenteModal({ onClose, onCreate, initial }){
+  const editing = !!initial;
+  const [nome,setNome]=useState(initial?.nome||"");
+  const [email,setEmail]=useState(initial?.email||"");
+  const [cargo,setCargo]=useState(initial?.cargo||"");
   const [errs,setErrs]=useState({});
   const [busy,setBusy]=useState(false);
   const criar=async ()=>{
@@ -1448,8 +1460,8 @@ function NovoDirigenteModal({ onClose, onCreate }){
   };
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
     <div onClick={e=>e.stopPropagation()} style={{width:480,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
-      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Novo dirigente</h3>
-      <p style={{margin:"0 0 16px",fontSize:14,color:"var(--text-2)"}}>O dirigente terá acesso completo à ferramenta.</p>
+      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>{editing?"Corrigir convite":"Novo dirigente"}</h3>
+      <p style={{margin:"0 0 16px",fontSize:14,color:"var(--text-2)"}}>{editing?"Confira os dados e reenviamos o link de acesso pro e-mail correto.":"O dirigente terá acesso completo à ferramenta."}</p>
 
       <div style={{display:"flex",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",marginBottom:18,fontSize:13,color:"var(--text-2)"}}>
         <Icon name="mail-check" size={16}/>
@@ -1471,15 +1483,16 @@ function NovoDirigenteModal({ onClose, onCreate }){
       {errs.cargo && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600}}>{errs.cargo}</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:24}}>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="mail-check" size={16}/>}>{busy?"Convidando...":"Convidar dirigente"}</Button>
+        <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="mail-check" size={16}/>}>{busy?"Enviando...":(editing?"Salvar e reenviar":"Convidar dirigente")}</Button>
       </div>
     </div>
   </div>;
 }
 
 function Dirigentes({ user }){
-  const { dirigentes, inviteDirigente, removeDirigente } = useStore();
+  const { dirigentes, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
   const [modal,setModal]=useState(false);
+  const [editando,setEditando]=useState(null); // convite pendente sendo corrigido
   const [confirmar,setConfirmar]=useState(null); // dirigente a remover
   const confirmados = dirigentes.filter(d=>d.user_id).length;
   return <div>
@@ -1504,16 +1517,20 @@ function Dirigentes({ user }){
               <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="mail" size={13}/>{d.email}</span>
             </div>
           </div>
-          <Button variant="ghost" iconLeft={<Icon name="trash-2" size={15}/>}
-            onClick={()=>setConfirmar(d)}
-            disabled={isSelf||last}
-            style={{opacity:(isSelf||last)?.4:1,color:"var(--brand-red)"}}
-            title={isSelf?"Você não pode remover a si mesmo":last?"Precisa haver ao menos um dirigente":"Remover"}>Remover</Button>
+          <div style={{display:"flex",gap:4}}>
+            {pendente && <Button variant="ghost" iconLeft={<Icon name="pencil" size={15}/>} onClick={()=>setEditando(d)} title="Corrigir nome/e-mail/função e reenviar o convite">Editar</Button>}
+            <Button variant="ghost" iconLeft={<Icon name="trash-2" size={15}/>}
+              onClick={()=>setConfirmar(d)}
+              disabled={isSelf||last}
+              style={{opacity:(isSelf||last)?.4:1,color:"var(--brand-red)"}}
+              title={isSelf?"Você não pode remover a si mesmo":last?"Precisa haver ao menos um dirigente":"Remover"}>Remover</Button>
+          </div>
         </div>;
       })}
     </Card>
 
     {modal && <NovoDirigenteModal onClose={()=>setModal(false)} onCreate={async d=>{ const r=await inviteDirigente(d); if(!r.error) setModal(false); return r; }}/>}
+    {editando && <NovoDirigenteModal initial={editando} onClose={()=>setEditando(null)} onCreate={async d=>{ const r=await updateDirigenteConvite(editando.id,d); if(!r.error) setEditando(null); return r; }}/>}
     {confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={()=>setConfirmar(null)}>
       <div onClick={e=>e.stopPropagation()} style={{width:400,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
         <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Remover dirigente</h3>
@@ -1806,7 +1823,7 @@ function AuthedGate({ session, onLogout }){
     (async ()=>{
       let { data } = await supabase.from("dirigentes").select("*").eq("user_id",session.user.id).maybeSingle();
       if(!data){
-        const { data:pendente } = await supabase.from("dirigentes").select("*").is("user_id",null).eq("email",session.user.email).maybeSingle();
+        const { data:pendente } = await supabase.from("dirigentes").select("*").is("user_id",null).eq("email",(session.user.email||"").trim().toLowerCase()).maybeSingle();
         if(pendente){
           const { data:reivindicado } = await supabase.from("dirigentes").update({user_id:session.user.id}).eq("id",pendente.id).select().single();
           if(reivindicado) data=reivindicado;
