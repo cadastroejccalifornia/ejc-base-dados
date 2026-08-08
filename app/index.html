@@ -141,12 +141,18 @@ function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.v
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
 
+// monta o endereço completo legível a partir das partes da ficha
+function enderecoCompleto(f){
+  const rua=[f.endereco,f.complemento].filter(Boolean).join(", ");
+  const local=[f.bairro,f.cidade].filter(Boolean).join(", ");
+  return [rua,local].filter(Boolean).join(" — ") || "—";
+}
 // campos-resumo derivados da ficha
 function fichaToFields(f){
   const mjc = f.mjcAtual && f.mjcAtual!=="Não estou em nenhuma" ? f.mjcAtual : "—";
   const ejc = f.fezCalifornia ? (f.anoEjc||"—") : (f.qualEjc||"—");
   const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
-  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:f.endereco||"—", inst, foto:f.foto||null, ficha:f };
+  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f };
 }
 // converte a Ficha preenchida numa nova linha da base
 function formToJovem(f){
@@ -830,7 +836,7 @@ function PersonDetailBody({ person }){
             <InfoRow label="WhatsApp" value={f.whats}/>
             <InfoRow label="E-mail" value={f.email}/>
             <InfoRow label="Instagram" value={f.insta}/>
-            <InfoRow label="Endereço" value={f.endereco} full/>
+            <InfoRow label="Endereço atual" value={enderecoCompleto(f)} full/>
           </div>
         </Section>
 
@@ -1096,6 +1102,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     fezCalifornia:null, garcom:null, garcomOnde:"", moita:null, moitaOnde:"", moitaPapel:"", moitaPapelOutro:"", circulo:"", musico:null, mjcAtual:"",
     restrFisica:"", restrFisicaOutra:"", restrAlim:"", restrAlimOutra:"", neuro:[], neuroOutra:"",
     paisEstado:"", paiFalecido:false, maeFalecida:false,
+    endereco:"", complemento:"", bairro:"", cidade:"",
     ...(initial||{}),
   });
   const { jovens } = useStore();
@@ -1122,6 +1129,9 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     else if(dupCpfMsg) errs.cpf=dupCpfMsg;
     if(f.email && !validaEmail(f.email)) errs.email="E-mail inválido.";
     else if(dupEmailMsg) errs.email=dupEmailMsg;
+    if(!f.endereco || !f.endereco.trim()) errs.endereco="Informe o endereço atual (rua e número).";
+    if(!f.bairro || !f.bairro.trim()) errs.bairro="Informe o bairro.";
+    if(!f.cidade || !f.cidade.trim()) errs.cidade="Informe a cidade.";
     if(!f.paiFalecido && f.paiTel && !validaTelefone(f.paiTel)) errs.paiTel="Telefone inválido.";
     if(!f.maeFalecida && f.maeTel && !validaTelefone(f.maeTel)) errs.maeTel="Telefone inválido.";
     if(f.fezCalifornia!==true && f.fezCalifornia!==false) errs.fezCalifornia="Responda se fez EJC no Califórnia.";
@@ -1172,9 +1182,14 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           <Field label="Instagram"><Input value={f.insta||""} onChange={e=>set("insta",maskInstagram(e.target.value))} placeholder="@seu.usuario"/></Field>
         </div>
         <div style={{marginTop:16}}>
-          <Field label="Endereço completo" hint="Rua, número, bairro e cidade">
-            <Input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} placeholder="Rua Exemplo, 123 — Bairro, Belo Horizonte"/>
+          <Field label="Endereço atual" required span error={errors.endereco} hint="Rua e número">
+            <Input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} error={!!errors.endereco} placeholder="Ex: Rua Exemplo, 123"/>
           </Field>
+        </div>
+        <div style={{...grid2,marginTop:16}}>
+          <Field label="Complemento" hint="Apto, bloco, casa..."><Input value={f.complemento||""} onChange={e=>set("complemento",e.target.value)} placeholder="Ex: Apto 202, Bloco B"/></Field>
+          <Field label="Bairro" required error={errors.bairro}><Input value={f.bairro||""} onChange={e=>set("bairro",e.target.value)} error={!!errors.bairro} placeholder="Ex: Céu Azul"/></Field>
+          <Field label="Cidade" required error={errors.cidade}><Input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} error={!!errors.cidade} placeholder="Ex: Belo Horizonte"/></Field>
         </div>
       </Section>
 
