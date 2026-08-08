@@ -493,7 +493,7 @@ function MontagemSheet({ montagem, onBack }){
     return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)",background:alerta?"color-mix(in oklch, var(--danger-soft) 45%, transparent)":"transparent"}}>
       <td style={{padding:"8px 8px 8px 12px",whiteSpace:"nowrap"}}>
         <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
-          <button title="Remover da equipe" onClick={()=>setPerson(rowKey,null)} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-red)",display:"inline-flex",padding:2,lineHeight:0}}><Icon name="x" size={15}/></button>
+          <button title="Remover da equipe" aria-label="Remover da equipe" onClick={()=>setPerson(rowKey,null)} style={{border:"none",cursor:"pointer",background:"var(--danger-soft)",color:"var(--brand-red)",display:"inline-flex",alignItems:"center",justifyContent:"center",width:26,height:26,borderRadius:"50%",flex:"0 0 auto"}}><Icon name="x" size={15}/></button>
           <span style={{color:"var(--text-3)",fontWeight:700}}>{rowIdx}</span>
         </span>
       </td>
