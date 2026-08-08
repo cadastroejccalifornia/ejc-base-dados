@@ -765,6 +765,82 @@ function ReadChips({ items, tone="brand" }){
 }
 const rowGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"18px 20px"};
 
+// gera um PDF da ficha da pessoa via janela de impressão (texto selecionável, sem lib pesada)
+function exportarFichaPDF(person){
+  const f=person.ficha||{};
+  const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+  const has=v=>v!=null&&v!==""&&!(Array.isArray(v)&&v.length===0);
+  const yn=v=>v===true?"Sim":v===false?"Não":"";
+  const row=(label,value)=>has(value)?`<div class="row"><span class="lbl">${esc(label)}</span><span class="val">${esc(value)}</span></div>`:"";
+  const rowHTML=(label,html,show)=>show?`<div class="row"><span class="lbl">${esc(label)}</span><span class="val">${html}</span></div>`:"";
+  const section=(title,inner)=>inner.trim()?`<section><h2>${esc(title)}</h2>${inner}</section>`:"";
+  const end=enderecoCompleto(f);
+  const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
+  const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML("Equipes que serviu",(f.equipesCalifornia||[]).map(r=>esc(r.ano+" — "+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
+  const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(esc).join("<br>"),true):"";
+  const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
+
+  const corpo=[
+    section("Dados pessoais",
+      row("Nome completo",f.nome||person.n)+row("Apelido",f.apelido)+row("Data de nascimento",f.nasc)+
+      row("CPF",f.cpf)+row("WhatsApp",f.whats||person.tel)+row("E-mail",f.email)+row("Instagram",f.insta)+
+      row("Endereço atual",end==="—"?"":end)),
+    section("Sacramentos",row("Sacramentos",(f.sacramentos||[]).join(", "))),
+    section("Família",
+      row("Pais",f.paisEstado)+
+      row("Pai",f.paiNome?(f.paiNome+(f.paiFalecido?" (falecido)":"")):"")+row("Telefone do pai",f.paiFalecido?"":f.paiTel)+
+      row("Mãe",f.maeNome?(f.maeNome+(f.maeFalecida?" (falecida)":"")):"")+row("Telefone da mãe",f.maeFalecida?"":f.maeTel)),
+    section("EJC no Califórnia",
+      row("Fez EJC no Califórnia?",yn(f.fezCalifornia))+
+      (f.fezCalifornia===true?(row("Ano que fez",f.anoEjc)+rowHTML("Círculo",circuloDot+esc(f.circulo),!!f.circulo)+row("Casal de tio",f.casalTio)):"")+
+      (f.fezCalifornia===false?row("Qual seu EJC?",f.qualEjc):"")+equipesHTML),
+    section("Experiência de serviço",
+      row("Já foi garçom?",yn(f.garcom))+(f.garcom===true?row("Onde?",f.garcomOnde):"")+
+      row("Já foi moita?",yn(f.moita))+(f.moita===true?(row("Quando e onde?",f.moitaOnde)+row("Papel",f.moitaPapel==="Outro"?(f.moitaPapelOutro||"Outro"):f.moitaPapel)):"")+foraHTML),
+    section("Equipe atual do MJC",row("Equipe atual do MJC",f.mjcAtual)),
+    section("Música",row("Músico?",yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
+    section("Saúde e restrições",
+      row("Restrição física",f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica)+
+      row("Restrição alimentar",f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim)+
+      row("Neurodivergências e saúde mental",neuroStr)),
+  ].join("");
+
+  const logo=window.location.origin+"/design_system_unzip/ejc_claude/assets/ejc-logo.png";
+  const sub=[person.mjc&&person.mjc!=="—"?"MJC: "+person.mjc:"",person.ejc&&person.ejc!=="—"?person.ejc:"",person.ativo?"Ativo":"Inativo"].filter(Boolean).map(esc).join(" · ");
+  const hoje=new Date().toLocaleDateString("pt-BR");
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha - ${esc(person.n)}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#2A241F;margin:0;padding:32px 34px;font-size:13px;line-height:1.5}
+  .head{display:flex;align-items:center;gap:16px;border-bottom:2px solid #E7DED4;padding-bottom:16px;margin-bottom:22px}
+  .head img.logo{width:52px;height:52px;object-fit:contain}
+  .head .foto{width:66px;height:66px;border-radius:50%;object-fit:cover;margin-left:auto;background:#EFE7DD}
+  .over{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#9B8B79;font-weight:700}
+  h1{font-size:22px;margin:2px 0 3px;font-weight:800}
+  .sub{font-size:12px;color:#7A6C5D}
+  section{margin-bottom:18px;break-inside:avoid}
+  h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#B5623A;font-weight:800;border-bottom:1px solid #EFE7DD;padding-bottom:5px;margin:0 0 10px}
+  .row{display:grid;grid-template-columns:210px 1fr;gap:10px;padding:4px 0}
+  .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#9B8B79;font-weight:700}
+  .val{font-size:13px;color:#2A241F}
+  .foot{margin-top:26px;border-top:1px solid #EFE7DD;padding-top:10px;font-size:11px;color:#9B8B79}
+  @media print{body{padding:0}@page{margin:16mm}}
+</style></head>
+<body onload="window.focus();window.print();">
+  <div class="head">
+    <img class="logo" src="${logo}" alt="EJC" onerror="this.style.display='none'">
+    <div><div class="over">EJC Califórnia · BH · Ficha do jovem</div><h1>${esc(person.n)}</h1><div class="sub">${sub}</div></div>
+    ${person.foto?`<img class="foto" src="${esc(person.foto)}" alt="" onerror="this.style.display='none'">`:""}
+  </div>
+  ${corpo}
+  <div class="foot">Gerado em ${esc(hoje)} · Base de Dados EJC Califórnia</div>
+</body></html>`;
+
+  const w=window.open("","_blank");
+  if(!w){ alert("Permita pop-ups para exportar a ficha em PDF."); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 function PersonDetail({ person, onClose, onEdit }){
   useLucide();
   const f=person.ficha; // ficha completa (quando cadastrado pelo formulário)
@@ -777,6 +853,7 @@ function PersonDetail({ person, onClose, onEdit }){
           <div className="mono-overline">{isTio?"FICHA · TIOS":"FICHA DO JOVEM"}</div>
           <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{person.n}</h1>
         </div>
+        <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
         {onEdit && !isTio && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar cadastro</Button>}
         <StatusDot active={person.ativo}/>
       </div>
@@ -845,11 +922,12 @@ function PersonDetailBody({ person }){
         </Section>}
 
         <Section title="Família" icon="users" color="var(--cat-terracotta)">
-          <div style={rowGrid}>
-            <InfoRow label="Pais" value={f.paisEstado}/>
-            <div/>
+          <InfoRow label="Pais" value={f.paisEstado}/>
+          <div style={{...rowGrid,marginTop:16}}>
             <InfoRow label="Pai" value={f.paiNome?(f.paiNome+(f.paiFalecido?" (falecido)":"")):null}/>
             <InfoRow label="Telefone do pai" value={f.paiFalecido?null:f.paiTel}/>
+          </div>
+          <div style={{...rowGrid,marginTop:16}}>
             <InfoRow label="Mãe" value={f.maeNome?(f.maeNome+(f.maeFalecida?" (falecida)":"")):null}/>
             <InfoRow label="Telefone da mãe" value={f.maeFalecida?null:f.maeTel}/>
           </div>
@@ -2172,7 +2250,8 @@ function MemberArea({ user, onLogout }){
 // visualização da própria ficha com botão de editar (reaproveita as seções do PersonDetail via um wrapper simples)
 function PersonInlineDetail({ person, onEdit }){
   return <div>
-    <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+    <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:12}}>
+      <Button variant="secondary" iconLeft={<Icon name="file-text" size={15}/>} onClick={()=>exportarFichaPDF(person)}>PDF</Button>
       <Button variant="primary" iconLeft={<Icon name="pencil" size={15}/>} onClick={onEdit}>Atualizar cadastro</Button>
     </div>
     <PersonDetailBody person={person}/>
