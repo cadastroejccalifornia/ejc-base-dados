@@ -495,6 +495,7 @@ const EXPORT_FIELDS=[
   {key:"nasc",label:"Data de nascimento",get:p=>(p.ficha&&p.ficha.nasc)||""},
   {key:"insta",label:"Instagram",get:p=>(p.ficha&&p.ficha.insta)||""},
   {key:"circulo",label:"Círculo",get:p=>(p.ficha&&p.ficha.circulo)||""},
+  {key:"foto",label:"Foto (link)",link:true,get:p=>p.foto||""},
 ];
 // nome da seção a partir da rowKey "<label>-<i>"
 const funcaoDaRowKey = k => k.slice(0,k.lastIndexOf("-"));
@@ -521,6 +522,12 @@ function ExportarModal({ montagem, tabAtual, onClose }){
     const linhas=coletaLinhas();
     const dados=linhas.map(({person,ctx})=>{ const row={}; cols.forEach(c=>{ row[c.label]=c.get(person,ctx); }); return row; });
     const ws=XLSX.utils.json_to_sheet(dados,{header:cols.map(c=>c.label)});
+    // colunas de link (ex: Foto) viram hyperlinks clicáveis no Excel
+    cols.forEach((c,ci)=>{ if(!c.link) return; dados.forEach((row,ri)=>{
+      const url=row[c.label]; if(!url) return;
+      const addr=XLSX.utils.encode_cell({c:ci,r:ri+1}); // +1 pula o cabeçalho
+      if(ws[addr]) ws[addr].l={Target:url,Tooltip:"Abrir foto"};
+    }); });
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"Montagem");
     const nomeArq=(montagem.nome||"montagem").replace(/[\\/:*?"<>|]/g,"-")+(escopo==="equipe"?(" - "+tabAtual):"")+".xlsx";
