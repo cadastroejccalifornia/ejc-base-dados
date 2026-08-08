@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   html,body{margin:0;height:100%}
   html,body{min-height:100%}
@@ -105,8 +106,10 @@ const EJC_YEARS=["XXXI EJC (2026)","XXX EJC (2025)","XXIX EJC (2024)","XXVIII EJ
 // extrai o ano numérico de um item do EJC_YEARS, ex: "XXVIII EJC (2023)" -> 2023
 const anoDoEjc = s => { const m=/\((\d{4})\)/.exec(s||""); return m?parseInt(m[1]):null; };
 
-// círculos do EJC no Califórnia
+// círculos do EJC no Califórnia (com a cor da bolinha)
 const CIRCULOS=["Amarelo","Verde","Vermelho","Laranja","Azul","Rosa","Não lembro"];
+const CIRCULO_COR={Amarelo:"#F1C40F",Verde:"#3FA34D",Vermelho:"#D64545",Laranja:"#E8833A",Azul:"#3B82C4",Rosa:"#E86BA5","Não lembro":"var(--text-3)"};
+function CirculoDot({ nome, size=10 }){ return <span style={{width:size,height:size,borderRadius:"50%",background:CIRCULO_COR[nome]||"var(--text-3)",flex:"0 0 auto",display:"inline-block",boxShadow:"inset 0 0 0 1px rgba(0,0,0,.08)"}}/>; }
 // papéis de quem já foi moita
 const PAPEIS_MOITA=["Sem papel","Bode","Patricinha","Nega Maria","Perna Quebrada","Boa Praça","Outro"];
 
@@ -476,9 +479,97 @@ function AddPersonCell({ pool, onPick }){
   </div>;
 }
 
+// campos disponíveis pra exportação da montagem — nome e telefone são obrigatórios
+const EXPORT_FIELDS=[
+  {key:"n",label:"Nome",required:true,get:p=>p.n||""},
+  {key:"tel",label:"Telefone",required:true,get:p=>p.tel||""},
+  {key:"equipe",label:"Equipe (montagem)",get:(p,c)=>c.equipe||""},
+  {key:"funcao",label:"Função",get:(p,c)=>c.funcao||""},
+  {key:"ejc",label:"EJC que fez",get:p=>p.ejc||""},
+  {key:"end",label:"Endereço",get:p=>p.end||""},
+  {key:"inst",label:"Instrumento",get:p=>p.inst||""},
+  {key:"mjc",label:"Equipe atual do MJC",get:p=>p.mjc||""},
+  {key:"cpf",label:"CPF",get:p=>(p.ficha&&p.ficha.cpf)||""},
+  {key:"email",label:"E-mail",get:p=>(p.ficha&&p.ficha.email)||""},
+  {key:"apelido",label:"Apelido",get:p=>(p.ficha&&p.ficha.apelido)||""},
+  {key:"nasc",label:"Data de nascimento",get:p=>(p.ficha&&p.ficha.nasc)||""},
+  {key:"insta",label:"Instagram",get:p=>(p.ficha&&p.ficha.insta)||""},
+  {key:"circulo",label:"Círculo",get:p=>(p.ficha&&p.ficha.circulo)||""},
+];
+// nome da seção a partir da rowKey "<label>-<i>"
+const funcaoDaRowKey = k => k.slice(0,k.lastIndexOf("-"));
+
+function ExportarModal({ montagem, tabAtual, onClose }){
+  useLucide();
+  const [sel,setSel]=useState(()=>{ const o={}; EXPORT_FIELDS.forEach(f=>o[f.key]=f.required?true:["equipe","funcao","ejc"].includes(f.key)); return o; });
+  const [escopo,setEscopo]=useState("montagem"); // montagem (todas as equipes) | equipe (só a aba atual)
+  const toggle=k=>{ const f=EXPORT_FIELDS.find(x=>x.key===k); if(f.required) return; setSel(s=>({...s,[k]:!s[k]})); };
+
+  // junta as pessoas (uma linha por alocação) conforme o escopo
+  const coletaLinhas=()=>{
+    const abas = escopo==="equipe" ? [tabAtual] : MONTAGEM_TABS;
+    const linhas=[];
+    abas.forEach(aba=>{
+      const tc=(montagem.cells&&montagem.cells[aba])||{};
+      Object.keys(tc).forEach(k=>{ const p=tc[k]; if(p) linhas.push({person:p, ctx:{equipe:aba, funcao:funcaoDaRowKey(k)}}); });
+    });
+    return linhas;
+  };
+
+  const exportar=()=>{
+    const cols=EXPORT_FIELDS.filter(f=>sel[f.key]);
+    const linhas=coletaLinhas();
+    const dados=linhas.map(({person,ctx})=>{ const row={}; cols.forEach(c=>{ row[c.label]=c.get(person,ctx); }); return row; });
+    const ws=XLSX.utils.json_to_sheet(dados,{header:cols.map(c=>c.label)});
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Montagem");
+    const nomeArq=(montagem.nome||"montagem").replace(/[\\/:*?"<>|]/g,"-")+(escopo==="equipe"?(" - "+tabAtual):"")+".xlsx";
+    XLSX.writeFile(wb,nomeArq);
+    onClose();
+  };
+
+  const totalLinhas=coletaLinhas().length;
+  const disponivel=typeof XLSX!=="undefined";
+
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:520,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
+      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Exportar para Excel</h3>
+      <p style={{margin:"0 0 18px",fontSize:14,color:"var(--text-2)"}}>Escolha os dados. Cada pessoa vira uma linha na planilha.</p>
+
+      <label style={{display:"block",fontSize:13,fontWeight:700,marginBottom:8}}>O que exportar</label>
+      <div style={{display:"flex",gap:8,marginBottom:18}}>
+        {[["montagem","Toda a montagem"],["equipe","Só esta equipe ("+tabAtual+")"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setEscopo(v)} style={{flex:1,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:600,padding:"11px",borderRadius:"var(--r-md)",background:escopo===v?"var(--brand-brown)":"var(--surface-2)",color:escopo===v?"var(--on-brand)":"var(--text-2)"}}>{l}</button>
+        ))}
+      </div>
+
+      <label style={{display:"block",fontSize:13,fontWeight:700,marginBottom:8}}>Colunas <span style={{color:"var(--text-3)",fontWeight:500}}>· Nome e Telefone são obrigatórios</span></label>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,marginBottom:20}}>
+        {EXPORT_FIELDS.map(f=>(
+          <label key={f.key} style={{display:"inline-flex",alignItems:"center",gap:9,fontSize:14,padding:"9px 12px",borderRadius:"var(--r-md)",background:sel[f.key]?"var(--brand-brown-soft)":"var(--surface-2)",cursor:f.required?"not-allowed":"pointer",opacity:f.required?.85:1}}>
+            <input type="checkbox" checked={!!sel[f.key]} disabled={f.required} onChange={()=>toggle(f.key)}/>
+            <span style={{fontWeight:sel[f.key]?600:500}}>{f.label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",marginBottom:18}}>
+        <Icon name="users" size={15}/>{totalLinhas} {totalLinhas===1?"pessoa":"pessoas"} nesta exportação.
+      </div>
+
+      {!disponivel && <div style={{fontSize:13,color:"var(--brand-red)",fontWeight:600,marginBottom:14}}>A biblioteca de Excel não carregou. Verifique a conexão e recarregue a página.</div>}
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" iconLeft={<Icon name="download" size={16}/>} onClick={exportar} disabled={!disponivel||totalLinhas===0} style={{opacity:(!disponivel||totalLinhas===0)?.5:1}}>Baixar Excel</Button>
+      </div>
+    </div>
+  </div>;
+}
+
 function MontagemSheet({ montagem, onBack }){
   const { jovens, setMontagemCell } = useStore();
   const [tab,setTab]=useState(MONTAGEM_TABS[0]);
+  const [exportOpen,setExportOpen]=useState(false);
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
   const teamData=(montagem.cells&&montagem.cells[tab])||{};
   const pool=jovens; // pool de busca (jovens)
@@ -526,7 +617,11 @@ function MontagemSheet({ montagem, onBack }){
   return <div>
     <Header title={montagem.nome}
       sub={"Responsável: "+montagem.autor+" · "+montagem.visib}
-      right={<Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>}/>
+      right={<div style={{display:"flex",gap:8}}>
+        <Button variant="primary" iconLeft={<Icon name="download" size={16}/>} onClick={()=>setExportOpen(true)}>Exportar</Button>
+        <Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>
+      </div>}/>
+    {exportOpen && <ExportarModal montagem={montagem} tabAtual={tab} onClose={()=>setExportOpen(false)}/>}
 
     {/* Abas de equipes (estilo Excel) */}
     <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:14}}>
@@ -748,7 +843,7 @@ function PersonDetailBody({ person }){
             <InfoRow label="Fez EJC no Califórnia?" value={f.fezCalifornia===true?"Sim":f.fezCalifornia===false?"Não":null}/>
             {f.fezCalifornia===true && <InfoRow label="Ano que fez" value={f.anoEjc}/>}
             {f.fezCalifornia===false && <InfoRow label="Qual seu EJC?" value={f.qualEjc}/>}
-            {f.fezCalifornia===true && <InfoRow label="Círculo" value={f.circulo}/>}
+            {f.fezCalifornia===true && f.circulo && <InfoRow label="Círculo" value={<span style={{display:"inline-flex",alignItems:"center",gap:8}}><CirculoDot nome={f.circulo}/>{f.circulo}</span>}/>}
             {f.fezCalifornia===true && <InfoRow label="Casal de tio" value={f.casalTio}/>}
           </div>
           {(f.equipesCalifornia&&f.equipesCalifornia.length>0) && <div style={{marginTop:16}}>
@@ -768,6 +863,8 @@ function PersonDetailBody({ person }){
           <div style={rowGrid}>
             <InfoRow label="Já foi garçom?" value={f.garcom===true?"Sim":f.garcom===false?"Não":null}/>
             {f.garcom===true && <InfoRow label="Onde?" value={f.garcomOnde}/>}
+          </div>
+          <div style={{...rowGrid,marginTop:16}}>
             <InfoRow label="Já foi moita?" value={f.moita===true?"Sim":f.moita===false?"Não":null}/>
             {f.moita===true && <InfoRow label="Quando e onde?" value={f.moitaOnde}/>}
             {f.moita===true && <InfoRow label="Papel" value={f.moitaPapel==="Outro"?(f.moitaPapelOutro||"Outro"):f.moitaPapel}/>}
@@ -960,7 +1057,7 @@ function YesNo({ value, onChange }){
     ))}
   </div>;
 }
-function ChipGroup({ options, value, onChange, multi }){
+function ChipGroup({ options, value, onChange, multi, leading }){
   const sel = multi ? (value||[]) : value;
   const isOn = o => multi ? sel.includes(o) : sel===o;
   const toggle = o => {
@@ -968,7 +1065,7 @@ function ChipGroup({ options, value, onChange, multi }){
     else onChange(o);
   };
   return <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-    {options.map(o=><button key={o} type="button" onClick={()=>toggle(o)} style={chipStyle(isOn(o))}>{o}</button>)}
+    {options.map(o=><button key={o} type="button" onClick={()=>toggle(o)} style={leading?{...chipStyle(isOn(o)),display:"inline-flex",alignItems:"center",gap:7}:chipStyle(isOn(o))}>{leading&&leading(o)}{o}</button>)}
   </div>;
 }
 function Section({ title, icon, color="var(--brand-brown)", desc, children }){
@@ -1127,7 +1224,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           </div>
           <div style={{marginTop:16}}>
             <Field label="Qual seu Círculo?">
-              <ChipGroup options={CIRCULOS} value={f.circulo} onChange={v=>set("circulo",v)}/>
+              <ChipGroup options={CIRCULOS} value={f.circulo} onChange={v=>set("circulo",v)} leading={o=><CirculoDot nome={o}/>}/>
             </Field>
           </div>
           <div style={{marginTop:16}}>
