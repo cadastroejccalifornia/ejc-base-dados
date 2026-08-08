@@ -253,7 +253,9 @@ function StoreProvider({ user, children }){
     },
     setMontagemCell: async (montId,tab,rowKey,person)=>{
       const m=montagens.find(x=>x.id===montId); if(!m) return;
-      const newCells={...m.cells,[tab]:{...(m.cells[tab]||{}),[rowKey]:person}};
+      const tabCells={...(m.cells[tab]||{})};
+      if(person) tabCells[rowKey]=person; else delete tabCells[rowKey]; // person null → remove da equipe
+      const newCells={...m.cells,[tab]:tabCells};
       const { data, error } = await supabase.from("montagens").update({cells:newCells}).eq("id",montId).select().single();
       if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
     },
@@ -417,13 +419,37 @@ function Tios({ onNovo, onOpenPerson }){
 /* ======================================================================
    MONTAGEM
    ====================================================================== */
-// estrutura de linhas da planilha
-const ROW_SECTIONS=[
-  {label:"Jovens coordenadores",count:2,tone:"var(--brand-brown)",kind:"jovem"},
-  {label:"Tios coordenadores",count:2,tone:"var(--cat-plum)",kind:"casal"},
+// estrutura de linhas da planilha — varia por equipe. "casal" = 2 linhas (as duas pessoas do casal).
+// "flex" = seção com adicionar/remover livre até `count` pessoas (equipes comuns).
+const COORD_JOVENS={label:"Jovens coordenadores",count:2,tone:"var(--brand-brown)",kind:"jovem"};
+const CASAL_COORD={label:"Casal de tios coordenadores",count:2,tone:"var(--cat-plum)",kind:"casal"};
+const TEAM_STRUCTS={
+  "Coordenação Geral":[
+    COORD_JOVENS,
+    CASAL_COORD,
+  ],
+  "Sala":[
+    COORD_JOVENS,
+    CASAL_COORD,
+    {label:"Casal de animadores",count:2,tone:"var(--cat-terracotta)",kind:"casal"},
+    {label:"Casal mini bar",count:2,tone:"var(--cat-olive)",kind:"casal"},
+    {label:"Casal boa vontade",count:2,tone:"var(--cat-blue)",kind:"casal"},
+    {label:"Músicos",count:3,tone:"var(--cat-plum)",kind:"jovem"},
+  ],
+  "Compras":[
+    COORD_JOVENS,
+    CASAL_COORD,
+    {label:"Equipe",count:4,tone:"var(--cat-blue)",kind:"jovem"},
+  ],
+};
+// equipes comuns: coordenação + tios apoio + equipe livre de até 30 pessoas
+const DEFAULT_STRUCT=[
+  COORD_JOVENS,
+  CASAL_COORD,
   {label:"Tios apoio",count:3,tone:"var(--cat-terracotta)",kind:"casal"},
-  {label:"Jovens integrantes",count:25,tone:"var(--cat-blue)",kind:"jovem"},
+  {label:"Equipe",count:30,tone:"var(--cat-blue)",kind:"jovem",flex:true},
 ];
+const estruturaDaEquipe = tab => TEAM_STRUCTS[tab] || DEFAULT_STRUCT;
 
 function AddPersonCell({ pool, onPick }){
   const [open,setOpen]=useState(false);
@@ -451,8 +477,43 @@ function MontagemSheet({ montagem, onBack }){
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
   const teamData=(montagem.cells&&montagem.cells[tab])||{};
   const pool=jovens; // pool de busca (jovens)
+  const sections=estruturaDaEquipe(tab);
+
+  // equipes (abas) em que a pessoa já está, exceto a aba atual — pra avisar de duplicidade
+  const equipesDaPessoa=(personId)=>{
+    if(!personId||!montagem.cells) return [];
+    return MONTAGEM_TABS.filter(t=>t!==tab).filter(t=>Object.values(montagem.cells[t]||{}).some(p=>p&&p.id===personId));
+  };
 
   let rowIdx=0;
+  const filledRow=(rowKey,person)=>{
+    rowIdx++;
+    const outras=equipesDaPessoa(person.id);
+    const alerta=outras.length>0;
+    return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)",background:alerta?"color-mix(in oklch, var(--danger-soft) 45%, transparent)":"transparent"}}>
+      <td style={{padding:"8px 14px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
+      <td style={{padding:"8px 14px"}}><Avatar src={person.foto} name={person.n} size={34}/></td>
+      <td style={{padding:"8px 14px",whiteSpace:"nowrap"}}>
+        <div style={{display:"inline-flex",flexDirection:"column",gap:3,...(alerta?{border:"2px solid var(--brand-red)",borderRadius:"var(--r-sm)",padding:"4px 9px"}:{})}}>
+          <span style={{fontWeight:600}}>{person.n}</span>
+          {alerta && <span style={{fontSize:11,color:"var(--brand-red)",fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><Icon name="alert-triangle" size={12}/>Já está em: {outras.join(", ")}</span>}
+        </div>
+      </td>
+      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.tel}</td>
+      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.ejc}</td>
+      <td style={{padding:"8px 14px",color:"var(--text-2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{person.end}</td>
+      <td style={{padding:"8px 14px"}}>{person.inst?<Tag color="var(--cat-plum)">{person.inst}</Tag>:<span style={{color:"var(--text-3)"}}>—</span>}</td>
+      <td style={{padding:"8px 14px",textAlign:"right"}}><IconButton label="Remover da equipe" size={30} variant="soft" onClick={()=>setPerson(rowKey,null)}><Icon name="x" size={15}/></IconButton></td>
+    </tr>;
+  };
+  const addRow=(rowKey)=>{
+    rowIdx++;
+    return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)"}}>
+      <td style={{padding:"8px 14px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
+      <td colSpan={7} style={{padding:"8px 14px"}}><AddPersonCell pool={pool} onPick={p=>setPerson(rowKey,p)}/></td>
+    </tr>;
+  };
+
   return <div>
     <Header title={montagem.nome}
       sub={"Responsável: "+montagem.autor+" · "+montagem.visib}
@@ -470,45 +531,40 @@ function MontagemSheet({ montagem, onBack }){
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:900}}>
           <thead>
             <tr>
-              {["#","Foto","Nome","Telefone","EJC que fez","Endereço","Instrumento"].map((c,i)=>(
+              {["#","Foto","Nome","Telefone","EJC que fez","Endereço","Instrumento",""].map((c,i)=>(
                 <th key={i} style={{padding:"11px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",background:"var(--surface-2)",whiteSpace:"nowrap"}}>{c}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {ROW_SECTIONS.map((sec)=>(
-              <React.Fragment key={sec.label}>
-                <tr><td colSpan={7} style={{padding:"10px 14px",background:"var(--surface-2)"}}>
+            {sections.map((sec)=>{
+              // linhas preenchidas dessa seção (chaves "<label>-<i>")
+              const filledKeys=Object.keys(teamData).filter(k=>k.startsWith(sec.label+"-")&&teamData[k]).sort((a,b)=>(+a.split("-").pop())-(+b.split("-").pop()));
+              return <React.Fragment key={sec.label}>
+                <tr><td colSpan={8} style={{padding:"10px 14px",background:"var(--surface-2)"}}>
                   <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:700,color:sec.tone,textTransform:"uppercase",letterSpacing:".04em"}}>
                     <span style={{width:8,height:8,borderRadius:"50%",background:sec.tone}}/>{sec.label}
+                    {sec.flex && <span style={{color:"var(--text-3)",fontWeight:600,textTransform:"none",letterSpacing:0}}>· {filledKeys.length}/{sec.count}</span>}
                   </span>
                 </td></tr>
-                {Array.from({length:sec.count}).map((_,k)=>{
-                  rowIdx++;
-                  const rowKey=sec.label+"-"+k;
-                  const person=teamData[rowKey];
-                  return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)"}}>
-                    <td style={{padding:"8px 14px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
-                    {person?<>
-                      <td style={{padding:"8px 14px"}}><Avatar src={person.foto} name={person.n} size={34}/></td>
-                      <td style={{padding:"8px 14px",fontWeight:600,whiteSpace:"nowrap"}}>{person.n}</td>
-                      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.tel}</td>
-                      <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.ejc}</td>
-                      <td style={{padding:"8px 14px",color:"var(--text-2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{person.end}</td>
-                      <td style={{padding:"8px 14px"}}>{person.inst?<Tag color="var(--cat-plum)">{person.inst}</Tag>:<span style={{color:"var(--text-3)"}}>—</span>}</td>
-                    </>:<>
-                      <td colSpan={6} style={{padding:"8px 14px"}}><AddPersonCell pool={pool} onPick={p=>setPerson(rowKey,p)}/></td>
-                    </>}
-                  </tr>;
-                })}
-              </React.Fragment>
-            ))}
+                {sec.flex
+                  ? <>
+                      {filledKeys.map(k=>filledRow(k,teamData[k]))}
+                      {filledKeys.length<sec.count && addRow(sec.label+"-"+(filledKeys.length?(+filledKeys[filledKeys.length-1].split("-").pop())+1:0))}
+                    </>
+                  : Array.from({length:sec.count}).map((_,k)=>{
+                      const rowKey=sec.label+"-"+k;
+                      const person=teamData[rowKey];
+                      return person?filledRow(rowKey,person):addRow(rowKey);
+                    })}
+              </React.Fragment>;
+            })}
           </tbody>
         </table>
       </div>
     </Card>
     <p style={{fontSize:12,color:"var(--text-3)",marginTop:12,display:"flex",alignItems:"center",gap:6}}>
-      <Icon name="info" size={14}/>Casais (tios) são puxados juntos: ao adicionar um, o cônjuge aparece automaticamente. Planilha começa zerada.
+      <Icon name="alert-triangle" size={14}/>Se alguém já estiver em outra equipe, o nome fica destacado em vermelho com o aviso. Use o × pra remover da equipe. A planilha começa zerada.
     </p>
   </div>;
 }
