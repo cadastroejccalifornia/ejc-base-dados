@@ -553,9 +553,13 @@ function ExportarModal({ montagem, tabAtual, onClose }){
         ))}
       </div>
 
-      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",marginBottom:18}}>
-        <Icon name="users" size={15}/>{totalLinhas} {totalLinhas===1?"pessoa":"pessoas"} nesta exportação.
-      </div>
+      {totalLinhas>0
+        ? <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",marginBottom:18}}>
+            <Icon name="users" size={15}/>{totalLinhas} {totalLinhas===1?"pessoa":"pessoas"} nesta exportação.
+          </div>
+        : <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--on-yellow)",background:"var(--brand-yellow-soft)",borderRadius:"var(--r-md)",padding:"11px 14px",marginBottom:18,fontWeight:600}}>
+            <Icon name="alert-triangle" size={15}/>{escopo==="equipe"?("Ninguém foi adicionado em "+tabAtual+" ainda. Escolha \"Toda a montagem\" ou adicione pessoas nessa equipe."):"Esta montagem ainda não tem ninguém adicionado. Adicione pessoas às equipes para poder exportar."}
+          </div>}
 
       {!disponivel && <div style={{fontSize:13,color:"var(--brand-red)",fontWeight:600,marginBottom:14}}>A biblioteca de Excel não carregou. Verifique a conexão e recarregue a página.</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
