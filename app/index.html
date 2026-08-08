@@ -161,6 +161,19 @@ const Auth={
     return { ok:true, needsConfirm: !data.session };
   },
   async logout(){ await supabase.auth.signOut(); },
+  // envia e-mail com link pra redefinir a senha (usuário deslogado)
+  async requestReset(email){
+    const redirect = window.location.origin + window.location.pathname;
+    const { error } = await supabase.auth.resetPasswordForEmail((email||"").trim().toLowerCase(), { redirectTo: redirect });
+    if(error) return { ok:false, error: /rate limit/i.test(error.message) ? "Muitas tentativas em pouco tempo — espere alguns minutos e tente de novo." : error.message };
+    return { ok:true };
+  },
+  // define a nova senha (usuário já autenticado — via link de recuperação ou logado na plataforma)
+  async updatePassword(senha){
+    const { error } = await supabase.auth.updateUser({ password:senha });
+    if(error) return { ok:false, error:error.message };
+    return { ok:true };
+  },
 };
 
 function StoreProvider({ user, children }){
@@ -1560,6 +1573,7 @@ function App({ user, onLogout }){
   const { addJovem } = useStore();
   const [view,setView]=useState("inicio");
   const [cadOpen,setCadOpen]=useState(false);
+  const [senhaOpen,setSenhaOpen]=useState(false);
   useLucide();
   const isMobile=useIsMobile();
   const [person,setPerson]=useState(null);
@@ -1582,16 +1596,17 @@ function App({ user, onLogout }){
   const overlays = <>
     {cadOpen && <FichaForm onClose={()=>setCadOpen(false)} onSave={saveFicha}/>}
     {person && <PersonDetail person={person} onClose={()=>setPerson(null)}/>}
+    {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
   </>;
 
   if(isMobile){
-    const items=[...NAV, {id:"__logout",label:"Sair",icon:"log-out"}];
+    const items=[...NAV, {id:"__senha",label:"Senha",icon:"key-round"}, {id:"__logout",label:"Sair",icon:"log-out"}];
     return (
       <div style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         <main style={{flex:1,minWidth:0,background:"var(--surface-2)",padding:"18px 16px 84px"}}>{screen}</main>
         <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"var(--surface)",boxShadow:"0 -6px 20px rgba(74,46,26,.12)",display:"flex",alignItems:"center",gap:2,padding:"8px 6px",overflowX:"auto",zIndex:40}}>
           {items.map(it=>{const on=it.id===view;
-            return <button key={it.id} title={it.label} onClick={()=> it.id==="__logout" ? onLogout() : go(it.id)} style={{flex:"0 0 auto",minWidth:60,border:"none",cursor:"pointer",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",color:on?"var(--brand-brown)":"var(--text-2)"}}>
+            return <button key={it.id} title={it.label} onClick={()=> it.id==="__logout" ? onLogout() : it.id==="__senha" ? setSenhaOpen(true) : go(it.id)} style={{flex:"0 0 auto",minWidth:60,border:"none",cursor:"pointer",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",color:on?"var(--brand-brown)":"var(--text-2)"}}>
               <span style={{width:38,height:32,borderRadius:99,display:"inline-flex",alignItems:"center",justifyContent:"center",background:on?"var(--brand-brown-soft)":"transparent"}}><Icon name={it.icon} size={19}/></span>
               <span style={{fontSize:10,fontWeight:on?700:500,whiteSpace:"nowrap"}}>{it.label}</span>
             </button>;})}
@@ -1613,6 +1628,7 @@ function App({ user, onLogout }){
               <Icon name={it.icon} size={20}/>
             </button>;})}
         </div>
+        <button title="Alterar senha" onClick={()=>setSenhaOpen(true)} style={{width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",background:"transparent",color:"var(--text-2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name="key-round" size={20}/></button>
         <button title={"Sair"+(user?" ("+user.email+")":"")} onClick={onLogout} style={{width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",background:"transparent",color:"var(--text-2)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20}}><Icon name="log-out" size={20}/></button>
         <Avatar name={user?user.nome||"Admin":"Você"} size={44} title={user?user.email:""}/>
       </nav>
@@ -1645,7 +1661,7 @@ function AuthInput({ error, ...p }){
   return <input {...p} onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)} style={{width:"100%",border:"none",background:error?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",boxShadow:ring,transition:"box-shadow .15s, background .15s"}}/>;
 }
 
-function LoginScreen({ onGoSignup }){
+function LoginScreen({ onGoSignup, onGoForgot }){
   const [email,setEmail]=useState("");
   const [senha,setSenha]=useState("");
   const [err,setErr]=useState("");
@@ -1667,13 +1683,138 @@ function LoginScreen({ onGoSignup }){
     <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Senha</label>
     <AuthInput type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErr("");}} error={!!err} placeholder="Sua senha" onKeyDown={e=>{if(e.key==="Enter")entrar();}}/>
     {err && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{err}</div>}
-    <div style={{marginTop:22}}>
+    <div style={{marginTop:10,textAlign:"right"}}>
+      <button onClick={onGoForgot} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:600,fontFamily:"var(--font-sans)",fontSize:13}}>Esqueci minha senha</button>
+    </div>
+    <div style={{marginTop:14}}>
       <Button variant="primary" onClick={entrar} disabled={busy} style={{width:"100%",justifyContent:"center",opacity:busy?.7:1}} iconLeft={<Icon name="log-in" size={16}/>}>{busy?"Entrando...":"Entrar"}</Button>
     </div>
     <div style={{marginTop:16,textAlign:"center",fontSize:13,color:"var(--text-2)"}}>
       Primeiro acesso? <button onClick={onGoSignup} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontFamily:"var(--font-sans)",fontSize:13}}>Criar minha conta</button>
     </div>
   </AuthShell>;
+}
+
+// tela "esqueci minha senha" — pede o e-mail e dispara o link de redefinição
+function ForgotPasswordScreen({ onGoLogin }){
+  const [email,setEmail]=useState("");
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [sent,setSent]=useState(false);
+  const enviar=async ()=>{
+    if(busy) return;
+    if(!validaEmail(email)){ setErr("Informe um e-mail válido."); return; }
+    setBusy(true); setErr("");
+    const r=await Auth.requestReset(email);
+    setBusy(false);
+    if(!r.ok){ setErr(r.error); return; }
+    setSent(true);
+  };
+  if(sent) return <AuthShell>
+    <div style={{textAlign:"center"}}>
+      <span style={{width:56,height:56,borderRadius:99,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><Icon name="mail-check" size={26}/></span>
+      <h2 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Verifique seu e-mail</h2>
+      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Se houver uma conta com <b>{email}</b>, enviamos um link pra criar uma nova senha. Clique nele e defina a senha nova.</p>
+      <Button variant="secondary" onClick={onGoLogin} style={{width:"100%",justifyContent:"center"}}>Voltar pro login</Button>
+    </div>
+  </AuthShell>;
+  return <AuthShell>
+    <h2 style={{margin:"0 0 4px",fontSize:19,fontWeight:800}}>Redefinir senha</h2>
+    <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Informe seu e-mail e enviamos um link pra criar uma nova senha.</p>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail</label>
+    <AuthInput type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} error={!!err} placeholder="voce@email.com" onKeyDown={e=>{if(e.key==="Enter")enviar();}}/>
+    {err && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{err}</div>}
+    <div style={{marginTop:22}}>
+      <Button variant="primary" onClick={enviar} disabled={busy} style={{width:"100%",justifyContent:"center",opacity:busy?.7:1}} iconLeft={<Icon name="mail" size={16}/>}>{busy?"Enviando...":"Enviar link"}</Button>
+    </div>
+    <div style={{marginTop:16,textAlign:"center",fontSize:13,color:"var(--text-2)"}}>
+      Lembrou a senha? <button onClick={onGoLogin} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontFamily:"var(--font-sans)",fontSize:13}}>Entrar</button>
+    </div>
+  </AuthShell>;
+}
+
+// tela de definir nova senha — abre quando a pessoa chega pelo link de recuperação do e-mail
+function ResetPasswordScreen({ onDone }){
+  const [senha,setSenha]=useState("");
+  const [senha2,setSenha2]=useState("");
+  const [errs,setErrs]=useState({});
+  const [busy,setBusy]=useState(false);
+  const salvar=async ()=>{
+    if(busy) return;
+    const e={};
+    if(!senha || senha.length<4) e.senha="A senha precisa de ao menos 4 caracteres.";
+    if(senha2!==senha) e.senha2="As senhas não conferem.";
+    setErrs(e);
+    if(Object.keys(e).length) return;
+    setBusy(true);
+    const r=await Auth.updatePassword(senha);
+    setBusy(false);
+    if(!r.ok){ setErrs({senha:r.error}); return; }
+    // limpa o token da URL e segue pro app já logado
+    history.replaceState(null,"",window.location.pathname);
+    onDone();
+  };
+  return <AuthShell>
+    <h2 style={{margin:"0 0 4px",fontSize:19,fontWeight:800}}>Criar nova senha</h2>
+    <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Escolha uma nova senha pra sua conta.</p>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nova senha</label>
+    <AuthInput type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErrs(x=>({...x,senha:null}));}} error={!!errs.senha} placeholder="Crie uma nova senha"/>
+    {errs.senha && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha}</div>}
+    <div style={{height:14}}/>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Confirmar nova senha</label>
+    <AuthInput type="password" value={senha2} onChange={e=>{setSenha2(e.target.value);setErrs(x=>({...x,senha2:null}));}} error={!!errs.senha2} placeholder="Repita a senha" onKeyDown={e=>{if(e.key==="Enter")salvar();}}/>
+    {errs.senha2 && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha2}</div>}
+    <div style={{marginTop:22}}>
+      <Button variant="primary" onClick={salvar} disabled={busy} style={{width:"100%",justifyContent:"center",opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Salvando...":"Salvar nova senha"}</Button>
+    </div>
+  </AuthShell>;
+}
+
+// modal de troca de senha dentro da plataforma (usuário já logado)
+function TrocarSenhaModal({ onClose }){
+  const [senha,setSenha]=useState("");
+  const [senha2,setSenha2]=useState("");
+  const [errs,setErrs]=useState({});
+  const [busy,setBusy]=useState(false);
+  const [ok,setOk]=useState(false);
+  useLucide();
+  const salvar=async ()=>{
+    if(busy) return;
+    const e={};
+    if(!senha || senha.length<4) e.senha="A senha precisa de ao menos 4 caracteres.";
+    if(senha2!==senha) e.senha2="As senhas não conferem.";
+    setErrs(e);
+    if(Object.keys(e).length) return;
+    setBusy(true);
+    const r=await Auth.updatePassword(senha);
+    setBusy(false);
+    if(!r.ok){ setErrs({senha:r.error}); return; }
+    setOk(true);
+  };
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:440,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+      {ok ? <div style={{textAlign:"center"}}>
+        <span style={{width:56,height:56,borderRadius:99,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><Icon name="check" size={26}/></span>
+        <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Senha alterada</h3>
+        <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Pronto! Sua senha foi atualizada.</p>
+        <Button variant="primary" onClick={onClose} style={{width:"100%",justifyContent:"center"}}>Fechar</Button>
+      </div> : <>
+        <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Alterar senha</h3>
+        <p style={{margin:"0 0 18px",fontSize:14,color:"var(--text-2)"}}>Escolha uma nova senha pra sua conta.</p>
+        <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nova senha</label>
+        <AuthInput type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErrs(x=>({...x,senha:null}));}} error={!!errs.senha} placeholder="Crie uma nova senha"/>
+        {errs.senha && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha}</div>}
+        <div style={{height:14}}/>
+        <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Confirmar nova senha</label>
+        <AuthInput type="password" value={senha2} onChange={e=>{setSenha2(e.target.value);setErrs(x=>({...x,senha2:null}));}} error={!!errs.senha2} placeholder="Repita a senha" onKeyDown={e=>{if(e.key==="Enter")salvar();}}/>
+        {errs.senha2 && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.senha2}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:24}}>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={salvar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Salvando...":"Salvar nova senha"}</Button>
+        </div>
+      </>}
+    </div>
+  </div>;
 }
 
 function SignupScreen({ onGoLogin }){
@@ -1735,6 +1876,7 @@ function MemberArea({ user, onLogout }){
   const { jovens, addJovem, updateJovem, loading } = useStore();
   const meu = jovens[0] || null; // RLS já garante que só a própria linha chega até aqui
   const [manualEdit,setManualEdit]=useState(false);
+  const [senhaOpen,setSenhaOpen]=useState(false);
   useLucide();
 
   const salvar=async (f)=>{
@@ -1768,8 +1910,10 @@ function MemberArea({ user, onLogout }){
         <div className="mono-overline">MEU CADASTRO</div>
         <div style={{fontSize:15,fontWeight:700}}>{meu?meu.n:user.email}</div>
       </div>
+      <Button variant="ghost" iconLeft={<Icon name="key-round" size={16}/>} onClick={()=>setSenhaOpen(true)}>Alterar senha</Button>
       <Button variant="secondary" iconLeft={<Icon name="log-out" size={16}/>} onClick={onLogout}>Sair</Button>
     </div>
+    {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
     <div style={{maxWidth:820,margin:"0 auto",padding:"6px 22px 40px"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
         <Icon name="shield-check" size={16}/>Você está na sua área pessoal. Aqui você só vê e atualiza a sua própria ficha.
@@ -1794,12 +1938,15 @@ function PersonInlineDetail({ person, onEdit }){
    ====================================================================== */
 function Gate(){
   const [state,setState]=useState({loading:true, session:null});
-  const [mode,setMode]=useState("login"); // login | signup
+  const [mode,setMode]=useState("login"); // login | signup | forgot
+  // se a pessoa chegou pelo link de recuperação, a URL traz type=recovery no hash — já entra na tela de nova senha
+  const [recovery,setRecovery]=useState(()=> typeof window!=="undefined" && window.location.hash.includes("type=recovery"));
 
   useEffect(()=>{
     let active=true;
     supabase.auth.getSession().then(({data})=>{ if(active) setState({loading:false, session:data.session}); });
-    const { data:sub } = supabase.auth.onAuthStateChange((_event, session)=>{
+    const { data:sub } = supabase.auth.onAuthStateChange((event, session)=>{
+      if(event==="PASSWORD_RECOVERY") setRecovery(true);
       setState({loading:false, session});
     });
     return ()=>{ active=false; sub.subscription.unsubscribe(); };
@@ -1807,9 +1954,12 @@ function Gate(){
 
   if(state.loading) return <AuthShell><div style={{textAlign:"center",padding:"30px 0",color:"var(--text-2)"}}>Carregando...</div></AuthShell>;
 
+  if(recovery) return <ResetPasswordScreen onDone={()=>setRecovery(false)}/>;
+
   if(!state.session){
     if(mode==="signup") return <SignupScreen onGoLogin={()=>setMode("login")}/>;
-    return <LoginScreen onGoSignup={()=>setMode("signup")}/>;
+    if(mode==="forgot") return <ForgotPasswordScreen onGoLogin={()=>setMode("login")}/>;
+    return <LoginScreen onGoSignup={()=>setMode("signup")} onGoForgot={()=>setMode("forgot")}/>;
   }
   return <AuthedGate session={state.session} onLogout={Auth.logout}/>;
 }
