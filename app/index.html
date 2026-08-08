@@ -781,6 +781,22 @@ function maskInstagram(v){
   s=s.replace(/^@+/,"");
   return s?("@"+s):"";
 }
+// data em formato BR: DD/MM/AAAA
+function maskData(v){
+  const d=onlyDigits(v).slice(0,8);
+  if(d.length<=2) return d;
+  if(d.length<=4) return `${d.slice(0,2)}/${d.slice(2)}`;
+  return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+}
+// aceita vazio (opcional) ou uma data DD/MM/AAAA plausível
+const validaData = v => {
+  const s=(v||"").trim();
+  if(!s) return true;
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if(!m) return false;
+  const dia=+m[1], mes=+m[2], ano=+m[3];
+  return dia>=1&&dia<=31&&mes>=1&&mes<=12&&ano>=1900&&ano<=2100;
+};
 function validaCPF(cpf){
   const d=onlyDigits(cpf);
   if(d.length!==11 || /^(\d)\1{10}$/.test(d)) return false;
@@ -923,6 +939,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     if(!f.nome || !f.nome.trim()) errs.nome="Informe o nome completo.";
     if(!f.whats) errs.whats="Informe o WhatsApp.";
     else if(!validaTelefone(f.whats)) errs.whats="WhatsApp inválido — use (DD) e 8 ou 9 dígitos.";
+    if(f.nasc && !validaData(f.nasc)) errs.nasc="Data inválida — use DD/MM/AAAA.";
     if(!f.cpf) errs.cpf="Informe o CPF.";
     else if(!validaCPF(f.cpf)) errs.cpf="CPF inválido.";
     else if(dupCpfMsg) errs.cpf=dupCpfMsg;
@@ -971,7 +988,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         <div style={grid2}>
           <Field label="Nome completo" required span error={errors.nome}><Input value={f.nome||""} onChange={e=>set("nome",e.target.value)} error={!!errors.nome} placeholder="Nome e sobrenome"/></Field>
           <Field label="Apelido"><Input value={f.apelido||""} onChange={e=>set("apelido",e.target.value)} placeholder="Como te chamam"/></Field>
-          <Field label="Data de nascimento"><Input type="date" value={f.nasc||""} onChange={e=>set("nasc",e.target.value)}/></Field>
+          <Field label="Data de nascimento" error={errors.nasc}><Input value={f.nasc||""} onChange={e=>set("nasc",maskData(e.target.value))} error={!!errors.nasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
           <Field label="CPF" required error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
           <Field label="WhatsApp" required error={errors.whats}><Input value={f.whats||""} onChange={e=>set("whats",maskTelefone(e.target.value))} error={!!errors.whats} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
           <Field label="E-mail" error={errors.email||dupEmailMsg}><Input type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} error={!!(errors.email||dupEmailMsg)} placeholder="voce@email.com"/></Field>
@@ -994,21 +1011,32 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         <Field label="Pai e mãe são casados ou separados?">
           <ChipGroup options={["Casados","Separados","Outro"]} value={f.paisEstado} onChange={v=>set("paisEstado",v)}/>
         </Field>
-        <div style={{...grid2,marginTop:16}}>
-          <div>
-            <Field label="Nome do pai"><Input value={f.paiNome||""} onChange={e=>set("paiNome",e.target.value)} placeholder="Nome do pai"/></Field>
-            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:2}}>
+        <div style={{marginTop:18,fontSize:13,fontWeight:700,color:"var(--text-2)",textTransform:"uppercase",letterSpacing:".04em"}}>Pais</div>
+        <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:16}}>
+          {/* Pai: nome | telefone | falecido */}
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+            <div style={{flex:"2 1 220px"}}>
+              <Field label="Nome do pai"><Input value={f.paiNome||""} onChange={e=>set("paiNome",e.target.value)} placeholder="Nome do pai"/></Field>
+            </div>
+            <div style={{flex:"1 1 170px"}}>
+              <Field label="Telefone do pai" error={errors.paiTel}><Input value={f.paiFalecido?"":(f.paiTel||"")} onChange={e=>set("paiTel",maskTelefone(e.target.value))} error={!!errors.paiTel} inputMode="tel" placeholder={f.paiFalecido?"—":"(31) 90000-0000"} style={{opacity:f.paiFalecido?.5:1}} disabled={f.paiFalecido}/></Field>
+            </div>
+            <label style={{flex:"0 0 auto",display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",paddingTop:34}}>
               <input type="checkbox" checked={f.paiFalecido} onChange={e=>set("paiFalecido",e.target.checked)}/> Falecido
             </label>
           </div>
-          <Field label="Telefone do pai" error={errors.paiTel}><Input value={f.paiTel||""} onChange={e=>set("paiTel",maskTelefone(e.target.value))} error={!!errors.paiTel} inputMode="tel" placeholder="(31) 90000-0000" style={{opacity:f.paiFalecido?.5:1}} disabled={f.paiFalecido}/></Field>
-          <div>
-            <Field label="Nome da mãe"><Input value={f.maeNome||""} onChange={e=>set("maeNome",e.target.value)} placeholder="Nome da mãe"/></Field>
-            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:2}}>
+          {/* Mãe: nome | telefone | falecida */}
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+            <div style={{flex:"2 1 220px"}}>
+              <Field label="Nome da mãe"><Input value={f.maeNome||""} onChange={e=>set("maeNome",e.target.value)} placeholder="Nome da mãe"/></Field>
+            </div>
+            <div style={{flex:"1 1 170px"}}>
+              <Field label="Telefone da mãe" error={errors.maeTel}><Input value={f.maeFalecida?"":(f.maeTel||"")} onChange={e=>set("maeTel",maskTelefone(e.target.value))} error={!!errors.maeTel} inputMode="tel" placeholder={f.maeFalecida?"—":"(31) 90000-0000"} style={{opacity:f.maeFalecida?.5:1}} disabled={f.maeFalecida}/></Field>
+            </div>
+            <label style={{flex:"0 0 auto",display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",paddingTop:34}}>
               <input type="checkbox" checked={f.maeFalecida} onChange={e=>set("maeFalecida",e.target.checked)}/> Falecida
             </label>
           </div>
-          <Field label="Telefone da mãe" error={errors.maeTel}><Input value={f.maeTel||""} onChange={e=>set("maeTel",maskTelefone(e.target.value))} error={!!errors.maeTel} inputMode="tel" placeholder="(31) 90000-0000" style={{opacity:f.maeFalecida?.5:1}} disabled={f.maeFalecida}/></Field>
         </div>
       </Section>
 
@@ -1018,18 +1046,18 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
         </Field>
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
-          <div style={grid2}>
-            <Field label="Ano que fez EJC" required error={errors.anoEjc}>
-              <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:errors.anoEjc?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
-                <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
-              </select>
+          <Field label="Ano que fez EJC" required error={errors.anoEjc}>
+            <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:errors.anoEjc?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+              <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
+            </select>
+          </Field>
+          <div style={{marginTop:16}}>
+            <Field label="Equipes que serviu no Califórnia" hint="Escolha a equipe de cada ano em que serviu — deixe em branco os anos que não serviu. Só aparecem anos depois do seu EJC.">
+              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={anosDepoisDoEjc(f.anoEjc)} needsYear={!f.anoEjc}/>
             </Field>
-            <Field label="Nome do casal de tio"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
           </div>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia" hint="Adicione cada ano/equipe e marque se foi coordenador — só aparecem anos depois do seu EJC">
-              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} afterYear={anoDoEjc(f.anoEjc)}/>
-            </Field>
+            <Field label="Nome do casal de tio"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
           </div>
         </div>}
         {f.fezCalifornia===false && <div style={{marginTop:16}}>
@@ -1037,8 +1065,8 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
             <Input value={f.qualEjc||""} onChange={e=>set("qualEjc",e.target.value)} placeholder="Ex: EJC Padre Eustáquio, 2022"/>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia">
-              <RepeatEquipes value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
+            <Field label="Equipes que serviu no Califórnia" hint="Escolha a equipe de cada ano em que serviu — deixe em branco os anos que não serviu.">
+              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={EJC_YEARS}/>
             </Field>
           </div>
         </div>}
@@ -1123,37 +1151,38 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
   </div>;
 }
 
-function RepeatEquipes({ value, onChange, afterYear }){
-  const [ano,setAno]=useState("");
-  const [eq,setEq]=useState("");
-  const [coord,setCoord]=useState(false);
-  const add=()=>{ if(!ano||!eq)return; onChange([...value,{ano,eq,coord}]); setAno("");setEq("");setCoord(false); };
-  // só pode ter servido em anos DEPOIS do próprio EJC (nunca antes ou no mesmo ano)
-  const anosDisponiveis = afterYear ? EJC_YEARS.filter(y=>anoDoEjc(y)>afterYear) : EJC_YEARS;
-  return <div>
-    {value.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-      {value.map((r,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-          <Badge tone="brand">{r.ano}</Badge>
-          <span style={{flex:1,fontSize:14,fontWeight:600}}>{r.eq}</span>
-          {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
-          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(value.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+// anos em que a pessoa PODE ter servido: só depois do próprio EJC (nunca antes/no mesmo ano)
+const anosDepoisDoEjc = anoEjcStr => { const a=anoDoEjc(anoEjcStr); return a ? EJC_YEARS.filter(y=>anoDoEjc(y)>a) : []; };
+
+// mostra uma linha por ano disponível; em cada ano a pessoa escolhe a equipe (dropdown) e se foi coordenador
+function EquipesPorAno({ value, onChange, years, needsYear }){
+  const byAno={}; (value||[]).forEach(r=>{ byAno[r.ano]=r; });
+  const setEq=(ano,eq)=>{
+    let next=(value||[]).filter(r=>r.ano!==ano);
+    if(eq) next=[...next,{ano,eq,coord:byAno[ano]?byAno[ano].coord:false}];
+    next.sort((a,b)=>anoDoEjc(b.ano)-anoDoEjc(a.ano));
+    onChange(next);
+  };
+  const setCoord=(ano,coord)=>onChange((value||[]).map(r=>r.ano===ano?{...r,coord}:r));
+  if(needsYear) return <p style={{fontSize:13,color:"var(--text-3)"}}>Selecione primeiro o ano em que você fez o EJC.</p>;
+  if(!years.length) return <p style={{fontSize:13,color:"var(--text-3)"}}>Ainda não houve nenhum EJC depois do seu.</p>;
+  const selStyle={border:"none",background:"var(--surface)",borderRadius:"var(--r-sm)",padding:"9px 10px",fontSize:13,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",width:"100%"};
+  return <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    {years.map(y=>{
+      const cur=byAno[y];
+      return <div key={y} style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"8px 12px"}}>
+        <span style={{flex:"0 0 auto",minWidth:120,fontSize:13,fontWeight:700,color:cur?"var(--brand-brown)":"var(--text-2)"}}>{y}</span>
+        <div style={{flex:"1 1 180px",minWidth:150}}>
+          <select value={cur?cur.eq:""} onChange={e=>setEq(y,e.target.value)} style={selStyle}>
+            <option value="">Não servi neste ano</option>
+            {EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+          </select>
         </div>
-      ))}
-    </div>}
-    {afterYear && anosDisponiveis.length===0 && <p style={{fontSize:12,color:"var(--text-3)",marginBottom:10}}>Ainda não houve nenhum EJC depois do seu.</p>}
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-      <select value={ano} onChange={e=>setAno(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:150}}>
-        <option value="">Ano...</option>{anosDisponiveis.map(y=><option key={y}>{y}</option>)}
-      </select>
-      <select value={eq} onChange={e=>setEq(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:170}}>
-        <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
-      </select>
-      <label style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
-        <input type="checkbox" checked={coord} onChange={e=>setCoord(e.target.checked)}/> Coordenador
-      </label>
-      <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
-    </div>
+        <label style={{flex:"0 0 auto",display:"inline-flex",alignItems:"center",gap:7,fontSize:13,color:"var(--text-2)",cursor:cur?"pointer":"not-allowed",opacity:cur?1:.4}}>
+          <input type="checkbox" checked={cur?!!cur.coord:false} disabled={!cur} onChange={e=>setCoord(y,e.target.checked)}/> Coordenador
+        </label>
+      </div>;
+    })}
   </div>;
 }
 
