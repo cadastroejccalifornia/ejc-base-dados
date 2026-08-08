@@ -588,7 +588,7 @@ function ReadChips({ items, tone="brand" }){
 }
 const rowGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"18px 20px"};
 
-function PersonDetail({ person, onClose }){
+function PersonDetail({ person, onClose, onEdit }){
   useLucide();
   const f=person.ficha; // ficha completa (quando cadastrado pelo formulário)
   const isTio=person.mjc===undefined;
@@ -600,6 +600,7 @@ function PersonDetail({ person, onClose }){
           <div className="mono-overline">{isTio?"FICHA · TIOS":"FICHA DO JOVEM"}</div>
           <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{person.n}</h1>
         </div>
+        {onEdit && !isTio && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar cadastro</Button>}
         <StatusDot active={person.ativo}/>
       </div>
     </div>
@@ -1570,13 +1571,14 @@ const NAV=[
   {id:"dirigentes",label:"Dirigentes",icon:"shield-check"},
 ];
 function App({ user, onLogout }){
-  const { addJovem } = useStore();
+  const { addJovem, updateJovem } = useStore();
   const [view,setView]=useState("inicio");
   const [cadOpen,setCadOpen]=useState(false);
   const [senhaOpen,setSenhaOpen]=useState(false);
   useLucide();
   const isMobile=useIsMobile();
   const [person,setPerson]=useState(null);
+  const [editPerson,setEditPerson]=useState(null);
   const [teamFilter,setTeamFilter]=useState(null);
   const openCad=()=>setCadOpen(true);
   const openPerson=p=>setPerson(p);
@@ -1593,9 +1595,11 @@ function App({ user, onLogout }){
   else if(view==="dirigentes") screen=<Dirigentes user={user}/>;
   else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam}/>;
 
+  const editarSalvar=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
   const overlays = <>
     {cadOpen && <FichaForm onClose={()=>setCadOpen(false)} onSave={saveFicha}/>}
-    {person && <PersonDetail person={person} onClose={()=>setPerson(null)}/>}
+    {person && <PersonDetail person={person} onClose={()=>setPerson(null)} onEdit={()=>{ setEditPerson(person); setPerson(null); }}/>}
+    {editPerson && <FichaForm initial={editPerson.ficha||{}} selfId={editPerson.id} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvar}/>}
     {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
   </>;
 
