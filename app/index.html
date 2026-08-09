@@ -376,6 +376,33 @@ function AniversariosCard({ onAbrir }){
   </Card>;
 }
 
+// card do Início: próximos eventos do calendário
+function EventosCard({ onAbrir }){
+  const { eventos } = useStore();
+  const hojeStr=ymd(new Date());
+  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort((a,b)=>a.data.localeCompare(b.data)).slice(0,5);
+  const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
+  return <Card title="📅 Próximos eventos" subtitle={proximos.length?"No calendário do movimento":"Calendário do movimento"}
+    action={<button onClick={onAbrir} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver calendário<Icon name="chevron-right" size={15}/></button>}>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {proximos.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum evento próximo. Adicione no Calendário.</div>}
+      {proximos.map(e=>{
+        const ehHoje=e.data===hojeStr;
+        return <div key={e.id} onClick={onAbrir} title="Abrir calendário" style={{display:"flex",alignItems:"center",gap:12,background:ehHoje?"var(--brand-yellow-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px",cursor:"pointer"}}>
+          <span style={{width:44,textAlign:"center",flex:"0 0 auto"}}>
+            <div style={{fontSize:18,fontWeight:800,lineHeight:1,color:"var(--brand-brown)"}}>{e.data.slice(8,10)}</div>
+            <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{MESES_PT[+e.data.slice(5,7)-1].slice(0,3)} · {diaSemanaDe(e.data)}</div>
+          </span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:14}}>{e.titulo}{ehHoje?" · Hoje":""}</div>
+            {e.descricao && <div style={{fontSize:12.5,color:"var(--text-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.descricao}</div>}
+          </div>
+        </div>;
+      })}
+    </div>
+  </Card>;
+}
+
 function AniversariosModal({ onClose }){
   const { jovens } = useStore();
   const hoje=new Date();
@@ -539,7 +566,7 @@ function Calendario(){
 /* ======================================================================
    INÍCIO (página principal)
    ====================================================================== */
-function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
+function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
   const { jovens } = useStore();
   const [anivOpen,setAnivOpen]=useState(false);
   const ultimos = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
@@ -553,6 +580,9 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
       {/* Aniversários da semana */}
       <AniversariosCard onAbrir={()=>setAnivOpen(true)}/>
+
+      {/* Próximos eventos do calendário */}
+      <EventosCard onAbrir={onOpenCalendario}/>
 
       {/* Últimos 3 cadastros */}
       <Card title="Últimos cadastros" subtitle="As 3 pessoas mais recentes" action={<Select value="Ver todos"/>}>
@@ -2148,7 +2178,7 @@ function App({ user, onLogout }){
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
   else if(view==="dirigentes") screen=<Dirigentes user={user}/>;
-  else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam}/>;
+  else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
 
   const editarSalvar=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
   const overlays = <>
