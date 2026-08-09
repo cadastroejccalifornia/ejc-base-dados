@@ -211,7 +211,7 @@ function StoreProvider({ user, children }){
         isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
         supabase.from("formularios").select("*"),
         isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
-        isAdmin ? supabase.from("eventos").select("*").order("data",{ascending:true}) : Promise.resolve({data:[]}),
+        supabase.from("eventos").select("*").order("data",{ascending:true}), // membros também leem (RLS permite ver)
       ]);
       if(!active) return;
       setJovens((jRes.data||[]).map(rowToJovem));
@@ -488,7 +488,7 @@ function NovoEventoModal({ dataInicial, onClose, onSave }){
   </div>;
 }
 
-function Calendario(){
+function Calendario({ readonly, compacto }){
   const { eventos, addEvento, removeEvento } = useStore();
   useLucide();
   const isMobile=useIsMobile();
@@ -506,9 +506,10 @@ function Calendario(){
   const irMes=delta=>setRef(new Date(ano,mes+delta,1));
   const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
   return <div>
-    <Header title="Calendário" sub="Eventos e datas do movimento"
-      right={<Button variant="primary" iconLeft={<Icon name="plus" size={18}/>} onClick={()=>setAddOpen({data:""})}>Adicionar evento</Button>}/>
+    {!compacto && <Header title="Calendário" sub="Eventos e datas do movimento"
+      right={readonly?null:<Button variant="primary" iconLeft={<Icon name="plus" size={18}/>} onClick={()=>setAddOpen({data:""})}>Adicionar evento</Button>}/>}
     <Card style={{marginBottom:18}}>
+      {compacto && <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:16,fontWeight:800}}><Icon name="calendar-days" size={18}/>Calendário do movimento</div>}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
         <IconButton label="Mês anterior" variant="soft" onClick={()=>irMes(-1)}><Icon name="chevron-left" size={18}/></IconButton>
         <div style={{fontWeight:800,fontSize:17}}>{MESES_PT[mes]} {ano}</div>
@@ -522,7 +523,7 @@ function Calendario(){
           const evs=porDia[ds]||[];
           const ehHoje=ds===hojeStr;
           const lim=isMobile?1:2;
-          return <button key={ds} onClick={()=>setAddOpen({data:ds})} title="Adicionar evento neste dia" style={{textAlign:"left",border:ehHoje?"2px solid var(--brand-brown)":"1px solid var(--hairline)",background:"var(--surface)",borderRadius:"var(--r-sm)",padding:isMobile?"4px":"6px",minHeight:isMobile?52:74,cursor:"pointer",display:"flex",flexDirection:"column",gap:3,overflow:"hidden"}}>
+          return <button key={ds} onClick={readonly?undefined:()=>setAddOpen({data:ds})} title={readonly?evs.map(e=>e.titulo).join(", "):"Adicionar evento neste dia"} style={{textAlign:"left",border:ehHoje?"2px solid var(--brand-brown)":"1px solid var(--hairline)",background:"var(--surface)",borderRadius:"var(--r-sm)",padding:isMobile?"4px":"6px",minHeight:isMobile?52:74,cursor:readonly?"default":"pointer",display:"flex",flexDirection:"column",gap:3,overflow:"hidden"}}>
             <span style={{fontSize:12,fontWeight:700,color:ehHoje?"var(--brand-brown)":"var(--text-2)"}}>{d}</span>
             {evs.slice(0,lim).map(e=><span key={e.id} style={{fontSize:10.5,fontWeight:600,background:"var(--brand-brown-soft)",color:"var(--brand-brown)",borderRadius:4,padding:"1px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.titulo}</span>)}
             {evs.length>lim && <span style={{fontSize:10,color:"var(--text-3)",fontWeight:600}}>+{evs.length-lim}</span>}
@@ -532,7 +533,7 @@ function Calendario(){
     </Card>
     <Card title={"Eventos de "+MESES_PT[mes]} subtitle={doMes.length+(doMes.length===1?" evento":" eventos")}>
       {doMes.length===0
-        ? <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum evento neste mês. Clique num dia do calendário ou em "Adicionar evento".</div>
+        ? <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>{readonly?"Nenhum evento neste mês.":"Nenhum evento neste mês. Clique num dia do calendário ou em \"Adicionar evento\"."}</div>
         : <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {doMes.map(e=>(
               <div key={e.id} style={{display:"flex",alignItems:"flex-start",gap:12,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px"}}>
@@ -544,13 +545,13 @@ function Calendario(){
                   <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
                   {e.descricao && <div style={{fontSize:13,color:"var(--text-2)",marginTop:2,whiteSpace:"pre-wrap"}}>{e.descricao}</div>}
                 </div>
-                <IconButton label="Remover evento" size={32} variant="soft" onClick={()=>setConfirmar(e)}><Icon name="trash-2" size={15}/></IconButton>
+                {!readonly && <IconButton label="Remover evento" size={32} variant="soft" onClick={()=>setConfirmar(e)}><Icon name="trash-2" size={15}/></IconButton>}
               </div>
             ))}
           </div>}
     </Card>
-    {addOpen && <NovoEventoModal dataInicial={addOpen.data} onClose={()=>setAddOpen(null)} onSave={addEvento}/>}
-    {confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={()=>setConfirmar(null)}>
+    {!readonly && addOpen && <NovoEventoModal dataInicial={addOpen.data} onClose={()=>setAddOpen(null)} onSave={addEvento}/>}
+    {!readonly && confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={()=>setConfirmar(null)}>
       <div onClick={e=>e.stopPropagation()} style={{width:380,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px"}}>
         <h3 style={{margin:"0 0 8px",fontSize:18,fontWeight:800}}>Remover evento</h3>
         <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Remover "<b>{confirmar.titulo}</b>" ({fmtDataBR(confirmar.data)})?</p>
@@ -577,13 +578,14 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
       right={<><SearchInput placeholder="Buscar pessoa..." maxWidth={360}/>
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>Cadastrar pessoa</Button></>}/>
 
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
-      {/* Aniversários da semana */}
+    {/* Linha 1: aniversários + próximos eventos */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start",marginBottom:20}}>
       <AniversariosCard onAbrir={()=>setAnivOpen(true)}/>
-
-      {/* Próximos eventos do calendário */}
       <EventosCard onAbrir={onOpenCalendario}/>
+    </div>
 
+    {/* Linha 2: últimos cadastros + pessoas por equipe */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
       {/* Últimos 3 cadastros */}
       <Card title="Últimos cadastros" subtitle="As 3 pessoas mais recentes" action={<Select value="Ver todos"/>}>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2491,20 +2493,22 @@ function MemberArea({ user, onLogout }){
     onSave={salvar}/>;
 
   return <div style={{minHeight:"calc(100vh - 44px)"}}>
-    <div style={{maxWidth:820,margin:"0 auto",padding:"18px 22px",display:"flex",alignItems:"center",gap:14}}>
-      <span style={{width:44,height:44,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"var(--shadow-xs)",background:"var(--surface)"}}>
+    <div style={{maxWidth:820,margin:"0 auto",padding:"18px 22px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+      <span style={{width:44,height:44,borderRadius:"50%",overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"var(--shadow-xs)",background:"var(--surface)",flex:"0 0 auto"}}>
         <img src="../design_system_unzip/ejc_claude/assets/ejc-logo.png" alt="EJC" style={{width:"90%",height:"90%",objectFit:"contain"}}/>
       </span>
-      <div style={{marginRight:"auto"}}>
+      <div style={{marginRight:"auto",minWidth:0}}>
         <div className="mono-overline">MEU CADASTRO</div>
-        <div style={{fontSize:15,fontWeight:700}}>{meu?meu.n:user.email}</div>
+        <div style={{fontSize:15,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meu?meu.n:user.email}</div>
       </div>
       <Button variant="ghost" iconLeft={<Icon name="key-round" size={16}/>} onClick={()=>setSenhaOpen(true)}>Alterar senha</Button>
       <Button variant="secondary" iconLeft={<Icon name="log-out" size={16}/>} onClick={onLogout}>Sair</Button>
     </div>
     {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
     <div style={{maxWidth:820,margin:"0 auto",padding:"6px 22px 40px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
+      {/* Calendário do movimento (somente leitura) no topo */}
+      <Calendario readonly compacto/>
+      <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",margin:"6px 0 18px",fontSize:13,fontWeight:600}}>
         <Icon name="shield-check" size={16}/>Você está na sua área pessoal. Aqui você só vê e atualiza a sua própria ficha.
       </div>
       <PersonInlineDetail person={meu} onEdit={()=>setManualEdit(true)}/>
