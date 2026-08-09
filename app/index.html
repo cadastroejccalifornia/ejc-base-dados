@@ -140,6 +140,7 @@ function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r
 function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
+function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, descricao:r.descricao }; }
 
 // monta o endereço completo legível a partir das partes da ficha
 function enderecoCompleto(f){
@@ -196,6 +197,7 @@ function StoreProvider({ user, children }){
   const [montagens,setMontagens]=useState([]);
   const [formularios,setFormularios]=useState([]);
   const [dirigentes,setDirigentes]=useState([]);
+  const [eventos,setEventos]=useState([]);
   const [loading,setLoading]=useState(true);
   const isAdmin = user.role==="admin";
 
@@ -203,12 +205,13 @@ function StoreProvider({ user, children }){
     let active=true;
     (async ()=>{
       setLoading(true);
-      const [jRes,tRes,mRes,fRes,dRes] = await Promise.all([
+      const [jRes,tRes,mRes,fRes,dRes,eRes] = await Promise.all([
         supabase.from("jovens").select("*").order("created_at",{ascending:false}),
         isAdmin ? supabase.from("tios").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
         isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
         supabase.from("formularios").select("*"),
         isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
+        isAdmin ? supabase.from("eventos").select("*").order("data",{ascending:true}) : Promise.resolve({data:[]}),
       ]);
       if(!active) return;
       setJovens((jRes.data||[]).map(rowToJovem));
@@ -216,13 +219,14 @@ function StoreProvider({ user, children }){
       setMontagens((mRes.data||[]).map(rowToMontagem));
       setFormularios((fRes.data||[]).map(rowToForm));
       setDirigentes((dRes.data||[]).map(rowToDirigente));
+      setEventos((eRes.data||[]).map(rowToEvento)); // tabela pode não existir ainda → fica vazio sem quebrar
       setLoading(false);
     })();
     return ()=>{ active=false; };
   },[user.id]);
 
   const api={
-    jovens, tios, montagens, formularios, dirigentes, loading,
+    jovens, tios, montagens, formularios, dirigentes, eventos, loading,
     addJovem: async (j)=>{
       const { data, error } = await supabase.from("jovens").insert(jovemToRow(j)).select().single();
       if(!error) setJovens(l=>[rowToJovem(data),...l]);
@@ -258,6 +262,16 @@ function StoreProvider({ user, children }){
     removeDirigente: async (id)=>{
       const { error } = await supabase.from("dirigentes").delete().eq("id",id);
       if(!error) setDirigentes(l=>l.filter(d=>d.id!==id));
+      return { error };
+    },
+    addEvento: async (ev)=>{
+      const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null }).select().single();
+      if(!error) setEventos(l=>[...l,rowToEvento(data)].sort((a,b)=>a.data.localeCompare(b.data)));
+      return { data: data?rowToEvento(data):null, error };
+    },
+    removeEvento: async (id)=>{
+      const { error } = await supabase.from("eventos").delete().eq("id",id);
+      if(!error) setEventos(l=>l.filter(e=>e.id!==id));
       return { error };
     },
     addMontagem: async (m)=>{
@@ -309,10 +323,225 @@ function Header({ title, sub, right }){
 }
 
 /* ======================================================================
+   ANIVERSÁRIOS + CALENDÁRIO
+   ====================================================================== */
+const pad2=n=>String(n).padStart(2,"0");
+const MESES_PT=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const DIAS_ABREV=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+function parseNascBR(s){
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec((s||"").trim());
+  if(!m) return null;
+  const dia=+m[1],mes=+m[2],ano=+m[3];
+  if(dia<1||dia>31||mes<1||mes>12) return null;
+  return {dia,mes,ano};
+}
+// aniversariantes ativos com data de nascimento válida
+function aniversariantes(jovens){
+  return (jovens||[]).filter(j=>j.ativo).map(j=>{ const p=j.ficha&&parseNascBR(j.ficha.nasc); return p?{j,dia:p.dia,mes:p.mes,ano:p.ano}:null; }).filter(Boolean);
+}
+function inicioSemana(base){ const d=new Date(base); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d; }
+// (dia/mes) cai na janela [ini,fim]? considera virada de ano → retorna a Date ou null
+function aniversarioNaJanela(dia,mes,ini,fim){
+  const anos=Array.from(new Set([ini.getFullYear(),fim.getFullYear()]));
+  for(let k=0;k<anos.length;k++){ const d=new Date(anos[k],mes-1,dia); d.setHours(0,0,0,0); if(d>=ini&&d<=fim) return d; }
+  return null;
+}
+function ymd(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function fmtDataBR(s){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||""); return m?(m[3]+"/"+m[2]+"/"+m[1]):(s||""); }
+
+function LinhaAniversario({ a, hoje }){
+  const idade=(a.data?a.data.getFullYear():hoje.getFullYear())-a.ano;
+  const ehHoje=a.data&&a.data.getDate()===hoje.getDate()&&a.data.getMonth()===hoje.getMonth();
+  return <div style={{display:"flex",alignItems:"center",gap:12,background:ehHoje?"var(--brand-yellow-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+    <Avatar src={a.j.foto} name={a.j.n} size={40}/>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontWeight:700,fontSize:14}}>{a.j.n}</div>
+      <div style={{fontSize:12.5,color:"var(--text-2)"}}>{pad2(a.dia)}/{pad2(a.mes)}{a.data?(" · "+DIAS_ABREV[a.data.getDay()]):""}{ehHoje?" · Hoje 🎉":""}</div>
+    </div>
+    <Badge tone="brand">{idade} anos</Badge>
+  </div>;
+}
+
+function AniversariosCard({ onAbrir }){
+  const { jovens } = useStore();
+  const hoje=new Date();
+  const ini=inicioSemana(hoje); const fim=new Date(ini); fim.setDate(fim.getDate()+6);
+  const lista=aniversariantes(jovens).map(a=>{ const d=aniversarioNaJanela(a.dia,a.mes,ini,fim); return d?{...a,data:d}:null; }).filter(Boolean).sort((x,y)=>x.data-y.data);
+  return <Card title="🎂 Aniversários da semana" subtitle={fmtDataBR(ymd(ini))+" a "+fmtDataBR(ymd(fim))}
+    action={<button onClick={onAbrir} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver ano todo<Icon name="chevron-right" size={15}/></button>}>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {lista.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Ninguém faz aniversário esta semana.</div>}
+      {lista.map(a=><LinhaAniversario key={a.j.id} a={a} hoje={hoje}/>)}
+    </div>
+  </Card>;
+}
+
+function AniversariosModal({ onClose }){
+  const { jovens } = useStore();
+  const hoje=new Date();
+  const todos=aniversariantes(jovens);
+  const [modo,setModo]=useState("mes"); // semana | mes | dia
+  const [mesSel,setMesSel]=useState(hoje.getMonth()+1);
+  const [diaSel,setDiaSel]=useState(hoje.getDate());
+  const [diaMesSel,setDiaMesSel]=useState(hoje.getMonth()+1);
+  useLucide();
+  let lista;
+  if(modo==="semana"){
+    const ini=inicioSemana(hoje); const fim=new Date(ini); fim.setDate(fim.getDate()+6);
+    lista=todos.map(a=>{ const d=aniversarioNaJanela(a.dia,a.mes,ini,fim); return d?{...a,data:d}:null; }).filter(Boolean).sort((x,y)=>x.data-y.data);
+  } else if(modo==="mes"){
+    lista=todos.filter(a=>a.mes===mesSel).map(a=>({...a,data:new Date(hoje.getFullYear(),a.mes-1,a.dia)})).sort((x,y)=>x.dia-y.dia);
+  } else {
+    lista=todos.filter(a=>a.dia===diaSel&&a.mes===diaMesSel).map(a=>({...a,data:new Date(hoje.getFullYear(),a.mes-1,a.dia)})).sort((x,y)=>x.j.n.localeCompare(y.j.n));
+  }
+  const sel={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 12px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"};
+  const btn=on=>({flex:1,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:700,padding:"10px",borderRadius:"var(--r-md)",background:on?"var(--brand-brown)":"var(--surface-2)",color:on?"var(--on-brand)":"var(--text-2)"});
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:540,maxWidth:"94vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <h3 style={{margin:0,fontSize:20,fontWeight:800,flex:1}}>🎂 Aniversários</h3>
+        <IconButton label="Fechar" variant="soft" onClick={onClose}><Icon name="x" size={18}/></IconButton>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <button onClick={()=>setModo("semana")} style={btn(modo==="semana")}>Semana</button>
+        <button onClick={()=>setModo("mes")} style={btn(modo==="mes")}>Mês</button>
+        <button onClick={()=>setModo("dia")} style={btn(modo==="dia")}>Dia</button>
+      </div>
+      {modo==="mes" && <div style={{marginBottom:14}}>
+        <select value={mesSel} onChange={e=>setMesSel(+e.target.value)} style={{...sel,width:"100%"}}>{MESES_PT.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select>
+      </div>}
+      {modo==="dia" && <div style={{display:"flex",gap:10,marginBottom:14}}>
+        <select value={diaSel} onChange={e=>setDiaSel(+e.target.value)} style={{...sel,flex:1}}>{Array.from({length:31}).map((_,i)=><option key={i} value={i+1}>Dia {i+1}</option>)}</select>
+        <select value={diaMesSel} onChange={e=>setDiaMesSel(+e.target.value)} style={{...sel,flex:2}}>{MESES_PT.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select>
+      </div>}
+      <div style={{fontSize:13,color:"var(--text-2)",marginBottom:10}}>{lista.length} {lista.length===1?"aniversariante":"aniversariantes"}</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10,overflow:"auto"}}>
+        {lista.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum aniversariante neste filtro.</div>}
+        {lista.map(a=><LinhaAniversario key={a.j.id} a={a} hoje={hoje}/>)}
+      </div>
+    </div>
+  </div>;
+}
+
+function NovoEventoModal({ dataInicial, onClose, onSave }){
+  const [titulo,setTitulo]=useState("");
+  const [data,setData]=useState(dataInicial||"");
+  const [descricao,setDescricao]=useState("");
+  const [errs,setErrs]=useState({});
+  const [busy,setBusy]=useState(false);
+  useLucide();
+  const salvar=async ()=>{
+    const e={}; if(!titulo.trim()) e.titulo="Informe o título."; if(!data) e.data="Escolha a data.";
+    setErrs(e); if(Object.keys(e).length) return;
+    setBusy(true);
+    const r=await onSave({titulo:titulo.trim(),data,descricao:descricao.trim()});
+    setBusy(false);
+    if(r&&r.error){ const msg=r.error.message||""; setErrs({titulo:(r.error.code==="42P01"||/does not exist|schema cache|relation/i.test(msg))?"A tabela de eventos ainda não existe no Supabase — rode a migração e tente de novo.":msg}); return; }
+    onClose();
+  };
+  const inp=err=>({width:"100%",border:"none",background:err?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"});
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:460,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+      <h3 style={{margin:"0 0 18px",fontSize:20,fontWeight:800}}>Novo evento</h3>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Título</label>
+      <input autoFocus value={titulo} onChange={e=>{setTitulo(e.target.value);setErrs(x=>({...x,titulo:null}));}} placeholder="Ex: Reunião geral do MJC" style={inp(errs.titulo)}/>
+      {errs.titulo && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.titulo}</div>}
+      <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Data</label>
+      <input type="date" value={data} onChange={e=>{setData(e.target.value);setErrs(x=>({...x,data:null}));}} style={inp(errs.data)}/>
+      {errs.data && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.data}</div>}
+      <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Descrição <span style={{color:"var(--text-3)",fontWeight:500}}>· opcional</span></label>
+      <textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={3} placeholder="Detalhes do evento..." style={{...inp(false),resize:"vertical"}}/>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:22}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" onClick={salvar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Salvando...":"Salvar evento"}</Button>
+      </div>
+    </div>
+  </div>;
+}
+
+function Calendario(){
+  const { eventos, addEvento, removeEvento } = useStore();
+  useLucide();
+  const isMobile=useIsMobile();
+  const [ref,setRef]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
+  const [addOpen,setAddOpen]=useState(null);
+  const [confirmar,setConfirmar]=useState(null);
+  const ano=ref.getFullYear(), mes=ref.getMonth();
+  const primeiroDiaSemana=new Date(ano,mes,1).getDay();
+  const diasNoMes=new Date(ano,mes+1,0).getDate();
+  const prefixoMes=ano+"-"+pad2(mes+1);
+  const porDia={}; eventos.forEach(e=>{ if(e.data){ (porDia[e.data]=porDia[e.data]||[]).push(e); } });
+  const doMes=eventos.filter(e=>e.data&&e.data.slice(0,7)===prefixoMes).sort((a,b)=>a.data.localeCompare(b.data));
+  const hojeStr=ymd(new Date());
+  const cells=[]; for(let i=0;i<primeiroDiaSemana;i++) cells.push(null); for(let d=1;d<=diasNoMes;d++) cells.push(d);
+  const irMes=delta=>setRef(new Date(ano,mes+delta,1));
+  const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
+  return <div>
+    <Header title="Calendário" sub="Eventos e datas do movimento"
+      right={<Button variant="primary" iconLeft={<Icon name="plus" size={18}/>} onClick={()=>setAddOpen({data:""})}>Adicionar evento</Button>}/>
+    <Card style={{marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <IconButton label="Mês anterior" variant="soft" onClick={()=>irMes(-1)}><Icon name="chevron-left" size={18}/></IconButton>
+        <div style={{fontWeight:800,fontSize:17}}>{MESES_PT[mes]} {ano}</div>
+        <IconButton label="Próximo mês" variant="soft" onClick={()=>irMes(1)}><Icon name="chevron-right" size={18}/></IconButton>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:isMobile?4:8}}>
+        {DIAS_ABREV.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",padding:"4px 0"}}>{d}</div>)}
+        {cells.map((d,i)=>{
+          if(d===null) return <div key={"e"+i}/>;
+          const ds=prefixoMes+"-"+pad2(d);
+          const evs=porDia[ds]||[];
+          const ehHoje=ds===hojeStr;
+          const lim=isMobile?1:2;
+          return <button key={ds} onClick={()=>setAddOpen({data:ds})} title="Adicionar evento neste dia" style={{textAlign:"left",border:ehHoje?"2px solid var(--brand-brown)":"1px solid var(--hairline)",background:"var(--surface)",borderRadius:"var(--r-sm)",padding:isMobile?"4px":"6px",minHeight:isMobile?52:74,cursor:"pointer",display:"flex",flexDirection:"column",gap:3,overflow:"hidden"}}>
+            <span style={{fontSize:12,fontWeight:700,color:ehHoje?"var(--brand-brown)":"var(--text-2)"}}>{d}</span>
+            {evs.slice(0,lim).map(e=><span key={e.id} style={{fontSize:10.5,fontWeight:600,background:"var(--brand-brown-soft)",color:"var(--brand-brown)",borderRadius:4,padding:"1px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.titulo}</span>)}
+            {evs.length>lim && <span style={{fontSize:10,color:"var(--text-3)",fontWeight:600}}>+{evs.length-lim}</span>}
+          </button>;
+        })}
+      </div>
+    </Card>
+    <Card title={"Eventos de "+MESES_PT[mes]} subtitle={doMes.length+(doMes.length===1?" evento":" eventos")}>
+      {doMes.length===0
+        ? <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum evento neste mês. Clique num dia do calendário ou em "Adicionar evento".</div>
+        : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {doMes.map(e=>(
+              <div key={e.id} style={{display:"flex",alignItems:"flex-start",gap:12,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px"}}>
+                <span style={{width:44,textAlign:"center",flex:"0 0 auto"}}>
+                  <div style={{fontSize:18,fontWeight:800,lineHeight:1}}>{e.data.slice(8,10)}</div>
+                  <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{diaSemanaDe(e.data)}</div>
+                </span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
+                  {e.descricao && <div style={{fontSize:13,color:"var(--text-2)",marginTop:2,whiteSpace:"pre-wrap"}}>{e.descricao}</div>}
+                </div>
+                <IconButton label="Remover evento" size={32} variant="soft" onClick={()=>setConfirmar(e)}><Icon name="trash-2" size={15}/></IconButton>
+              </div>
+            ))}
+          </div>}
+    </Card>
+    {addOpen && <NovoEventoModal dataInicial={addOpen.data} onClose={()=>setAddOpen(null)} onSave={addEvento}/>}
+    {confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={()=>setConfirmar(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:380,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px"}}>
+        <h3 style={{margin:"0 0 8px",fontSize:18,fontWeight:800}}>Remover evento</h3>
+        <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Remover "<b>{confirmar.titulo}</b>" ({fmtDataBR(confirmar.data)})?</p>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Button variant="ghost" onClick={()=>setConfirmar(null)}>Cancelar</Button>
+          <Button variant="primary" style={{background:"var(--brand-red)"}} iconLeft={<Icon name="trash-2" size={16}/>} onClick={async ()=>{ await removeEvento(confirmar.id); setConfirmar(null); }}>Remover</Button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+/* ======================================================================
    INÍCIO (página principal)
    ====================================================================== */
 function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
   const { jovens } = useStore();
+  const [anivOpen,setAnivOpen]=useState(false);
   const ultimos = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
   const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t&&j.ativo).length;return o;},{});
   const totalAtivos = jovens.filter(j=>j.ativo).length;
@@ -322,6 +551,9 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>Cadastrar pessoa</Button></>}/>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
+      {/* Aniversários da semana */}
+      <AniversariosCard onAbrir={()=>setAnivOpen(true)}/>
+
       {/* Últimos 3 cadastros */}
       <Card title="Últimos cadastros" subtitle="As 3 pessoas mais recentes" action={<Select value="Ver todos"/>}>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -360,6 +592,7 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam }){
         </div>
       </Card>
     </div>
+    {anivOpen && <AniversariosModal onClose={()=>setAnivOpen(false)}/>}
   </div>;
 }
 
@@ -1888,6 +2121,7 @@ const NAV=[
   {id:"montagem",label:"Montagem",icon:"layout-grid"},
   {id:"form",label:"Novo formulário",icon:"file-plus-2"},
   {id:"relatorios",label:"Relatórios",icon:"bar-chart-3"},
+  {id:"calendario",label:"Calendário",icon:"calendar-days"},
   {id:"dirigentes",label:"Dirigentes",icon:"shield-check"},
 ];
 function App({ user, onLogout }){
@@ -1912,6 +2146,7 @@ function App({ user, onLogout }){
   else if(view==="montagem") screen=<Montagem/>;
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
+  else if(view==="calendario") screen=<Calendario/>;
   else if(view==="dirigentes") screen=<Dirigentes user={user}/>;
   else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam}/>;
 
