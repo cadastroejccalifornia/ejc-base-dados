@@ -21,7 +21,8 @@
   ::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px}
   input::placeholder{color:var(--text-3)}
   @media (max-width: 760px){
-    body{padding:0}
+    body{padding:0;overflow-x:hidden}
+    #root{overflow-x:hidden} /* evita rolagem lateral acidental do conteúdo no celular */
     input,select,textarea{font-size:16px !important} /* evita zoom automático no iOS */
     .hide-mobile{display:none !important}
   }
@@ -668,9 +669,6 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
   const [q,setQ]=useState("");
   const team = teamFilter||null;
   const list=rows.filter(r=>r.n.toLowerCase().includes(q.toLowerCase()) && (!team || r.mjc===team));
-  const cols = kind==="jovem"
-    ? ["","Nome","Telefone","Equipe do MJC","EJC que fez","Status"]
-    : ["","Casal","Telefone","Vínculo","Endereço","Status"];
   return <Card pad="0" style={{overflow:"hidden"}}>
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",flexWrap:"wrap"}}>
       <SearchInput placeholder={kind==="jovem"?"Buscar jovem...":"Buscar casal..."} value={q} onChange={setQ} maxWidth={340}/>
@@ -682,30 +680,29 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>{kind==="jovem"?"Adicionar jovem":"Adicionar casal"}</Button>
       </div>
     </div>
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-        <thead>
-          <tr style={{textAlign:"left"}}>
-            {cols.map((c,i)=><th key={i} style={{padding:"12px 18px",fontSize:12,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",background:"var(--surface-2)",whiteSpace:"nowrap"}}>{c}</th>)}
-            <th style={{background:"var(--surface-2)"}}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((r,i)=>(
-            <tr key={i} style={{borderBottom:"1px solid var(--hairline)"}}>
-              <td style={{padding:"10px 18px"}}><Avatar src={r.foto} name={r.n} size={38}/></td>
-              <td style={{padding:"10px 18px",fontWeight:600,whiteSpace:"nowrap"}}>
-                <button onClick={()=>onOpenPerson&&onOpenPerson(r)} title="Ver ficha completa" style={{border:"none",background:"transparent",cursor:"pointer",font:"inherit",fontWeight:600,color:"var(--brand-brown)",padding:0,display:"inline-flex",alignItems:"center",gap:5}}>{r.n}</button>
-              </td>
-              <td style={{padding:"10px 18px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{r.tel}</td>
-              <td style={{padding:"10px 18px"}}>{kind==="jovem"?<Tag color={mjcColor(r.mjc)}>{r.mjc}</Tag>:<span style={{color:"var(--text-2)"}}>{r.ejc}</span>}</td>
-              <td style={{padding:"10px 18px",color:"var(--text-2)",whiteSpace:"nowrap",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis"}}>{kind==="jovem"?r.ejc:r.end}</td>
-              <td style={{padding:"10px 18px"}}><StatusDot active={r.ativo}/></td>
-              <td style={{padding:"10px 18px"}}><IconButton label="Ver ficha" size={34} variant="soft" onClick={()=>onOpenPerson&&onOpenPerson(r)}><Icon name="chevron-right" size={16}/></IconButton></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{borderTop:"1px solid var(--hairline)"}}>
+      {list.map((r,i)=>(
+        <div key={i} onClick={()=>onOpenPerson&&onOpenPerson(r)} title="Ver ficha completa"
+          style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderBottom:"1px solid var(--hairline)",cursor:"pointer"}}>
+          <Avatar src={r.foto} name={r.n} size={52}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15.5,color:"var(--brand-brown)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.n}</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,flexWrap:"wrap",fontSize:13,color:"var(--text-2)"}}>
+              {r.tel && r.tel!=="—" && <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{r.tel}</span>}
+              {r.ejc && r.ejc!=="—" && <span style={{color:"var(--text-3)"}}>· {r.ejc}</span>}
+            </div>
+            <div style={{marginTop:7,minWidth:0}}>
+              {kind==="jovem"
+                ? <Tag color={mjcColor(r.mjc)}>{r.mjc}</Tag>
+                : (r.end && r.end!=="—" ? <span style={{fontSize:13,color:"var(--text-2)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.end}</span> : null)}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,flex:"0 0 auto"}}>
+            <StatusDot active={r.ativo}/>
+            <Icon name="chevron-right" size={18}/>
+          </div>
+        </div>
+      ))}
     </div>
     {list.length===0 && <div style={{padding:"40px",textAlign:"center",color:"var(--text-3)"}}>{q?('Nenhum resultado para "'+q+'".'):team?("Ninguém na equipe "+team+" ainda."):"Nenhum cadastro ainda."}</div>}
   </Card>;
@@ -1145,15 +1142,15 @@ function PersonDetail({ person, onClose, onEdit }){
   const isTio=person.mjc===undefined;
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
-      <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
         <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
-        <div style={{marginRight:"auto"}}>
+        <div style={{marginRight:"auto",minWidth:0,flex:"1 1 160px"}}>
           <div className="mono-overline">{isTio?"FICHA · TIOS":"FICHA DO JOVEM"}</div>
-          <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{person.n}</h1>
+          <h1 style={{margin:"2px 0 0",fontSize:20,fontWeight:800,letterSpacing:"-.02em",overflowWrap:"anywhere"}}>{person.n}</h1>
         </div>
-        <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
-        {onEdit && !isTio && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar cadastro</Button>}
         <StatusDot active={person.ativo}/>
+        <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
+        {onEdit && !isTio && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar</Button>}
       </div>
     </div>
 
@@ -1529,11 +1526,11 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
     {/* top bar */}
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
-      <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
         <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
-        <div style={{marginRight:"auto"}}>
+        <div style={{marginRight:"auto",minWidth:0,flex:"1 1 140px"}}>
           <div className="mono-overline">{overline||"NOVA FICHA"}</div>
-          <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em"}}>{title||"Ficha do jovem"}</h1>
+          <h1 style={{margin:"2px 0 0",fontSize:20,fontWeight:800,letterSpacing:"-.02em",overflowWrap:"anywhere"}}>{title||"Ficha do jovem"}</h1>
         </div>
         <Button variant="ghost" className="hide-mobile" onClick={onClose}>Cancelar</Button>
         <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={handleSave} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":(saveLabel||"Salvar ficha")}</Button>
@@ -2140,16 +2137,16 @@ function Dirigentes({ user }){
         const pendente = !d.user_id;
         const isSelf = d.user_id===user.id || (d.email||"").toLowerCase()===(user.email||"").toLowerCase();
         const last = !pendente && confirmados<=1;
-        return <div key={d.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderBottom:i<dirigentes.length-1?"1px solid var(--hairline)":"none"}}>
+        return <div key={d.id} style={{display:"flex",alignItems:"center",gap:14,rowGap:8,flexWrap:"wrap",padding:"14px 18px",borderBottom:i<dirigentes.length-1?"1px solid var(--hairline)":"none"}}>
           <span style={{width:44,height:44,borderRadius:99,background:pendente?"var(--surface-3)":(d.cargo?cargoColor(d.cargo):"var(--brand-brown)"),color:pendente?"var(--text-2)":"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={pendente?"mail-clock":(d.cargo?cargoIcon(d.cargo):"shield-check")} size={20}/></span>
-          <div style={{flex:1,minWidth:0}}>
+          <div style={{flex:"1 1 200px",minWidth:0}}>
             <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{d.nome}{isSelf && <Badge tone="brand">Você</Badge>}{pendente && <Badge tone="warning" dot>Convite pendente</Badge>}</div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
               {d.cargo && <Tag color={cargoColor(d.cargo)}>{d.cargo}</Tag>}
-              <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="mail" size={13}/>{d.email}</span>
+              <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5,minWidth:0,overflowWrap:"anywhere"}}><Icon name="mail" size={13}/>{d.email}</span>
             </div>
           </div>
-          <div style={{display:"flex",gap:4}}>
+          <div style={{display:"flex",gap:4,flex:"0 0 auto",marginLeft:"auto"}}>
             {pendente && <Button variant="ghost" iconLeft={<Icon name="pencil" size={15}/>} onClick={()=>setEditando(d)} title="Corrigir nome/e-mail/função e reenviar o convite">Editar</Button>}
             <Button variant="ghost" iconLeft={<Icon name="trash-2" size={15}/>}
               onClick={()=>setConfirmar(d)}
@@ -2552,7 +2549,7 @@ function MemberArea({ user, onLogout }){
 // visualização da própria ficha com botão de editar (reaproveita as seções do PersonDetail via um wrapper simples)
 function PersonInlineDetail({ person, onEdit }){
   return <div>
-    <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:12}}>
+    <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       <Button variant="secondary" iconLeft={<Icon name="file-text" size={15}/>} onClick={()=>exportarFichaPDF(person)}>PDF</Button>
       <Button variant="primary" iconLeft={<Icon name="pencil" size={15}/>} onClick={onEdit}>Atualizar cadastro</Button>
     </div>
