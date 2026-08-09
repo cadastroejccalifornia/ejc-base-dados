@@ -2635,7 +2635,10 @@ function AuthedGate({ session, onLogout }){
     (async ()=>{
       const emailL=(session.user.email||"").trim().toLowerCase();
       const { data:todos } = await supabase.from("dirigentes").select("*");
-      let mine=(todos||[]).find(d=>(d.email||"").trim().toLowerCase()===emailL) || null;
+      // dirigente = casa por user_id (admins existentes) OU por e-mail (convidados novos)
+      let mine=(todos||[]).find(d=>d.user_id===session.user.id)
+            || (todos||[]).find(d=>(d.email||"").trim().toLowerCase()===emailL)
+            || null;
       // vincula o user_id na primeira vez (só pra limpar o "Convite pendente" na tela)
       if(mine && !mine.user_id){
         try{ const { data:upd } = await supabase.from("dirigentes").update({user_id:session.user.id}).eq("id",mine.id).select().maybeSingle(); if(upd) mine=upd; }catch(e){}
