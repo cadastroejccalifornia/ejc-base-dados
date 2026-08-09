@@ -1832,6 +1832,14 @@ const CAMPO_CATALOGO=[
   {id:"texto_livre",label:"Campo de texto livre",type:"texto"},
   {id:"pergunta_simnao",label:"Pergunta Sim / Não",type:"simnao"},
 ];
+// campos compostos: o que abre quando a resposta é "Sim" (mostrado como dica no construtor)
+const CAMPO_SUBINFO={
+  fezCalifornia:"Se Sim → ano do EJC, círculo, casal de tio e equipes que serviu (por ano)",
+  garcom:"Se Sim → onde foi garçom",
+  moita:"Se Sim → quando e onde + papel",
+  serviuFora:"Se Sim → Qual EJC? (texto) · Equipe (seleção) · Ano — pode adicionar vários",
+  musico:"Se Sim → instrumentos que toca/canta",
+};
 const valoresDoTipo=(campo)=>{
   if(!campo) return [];
   if(campo.type==="simnao") return ["Sim","Não"];
@@ -1955,6 +1963,7 @@ function FormBuilder({ form, onClose, onSave }){
               <div style={{flex:1,minWidth:120}}>
                 <div style={{fontWeight:600,fontSize:15}}>{c.label}</div>
                 <div style={{fontSize:12,color:"var(--text-3)"}}>{TIPO_META[c.type].lbl}</div>
+                {CAMPO_SUBINFO[c.id] && <div style={{fontSize:12,color:"var(--brand-brown)",marginTop:3,fontWeight:600}}>{CAMPO_SUBINFO[c.id]}</div>}
               </div>
               {!sistema && <CondicaoConfig campo={c} anteriores={campos.slice(0,i)} onChange={cond=>setCond(c.key,cond)}/>}
               {sistema && c.cond && <Badge tone="yellow" dot>Condicional</Badge>}
@@ -2616,22 +2625,23 @@ function Gate(){
 }
 
 // depois de logado: descobre se é dirigente (linha em `dirigentes`) ou membro comum.
-// se existir um convite pendente (user_id nulo) com o mesmo e-mail, reivindica na hora.
+// dirigente = tem linha em `dirigentes` com o MESMO e-mail (independe de user_id).
+// A RLS `is_dirigente()` (por e-mail) devolve todas as linhas se a pessoa for dirigente,
+// senão devolve vazio — então achar a própria linha por e-mail é suficiente e robusto.
 function AuthedGate({ session, onLogout }){
   const [roleInfo,setRoleInfo]=useState(null);
   useEffect(()=>{
     let active=true;
     (async ()=>{
-      let { data } = await supabase.from("dirigentes").select("*").eq("user_id",session.user.id).maybeSingle();
-      if(!data){
-        const { data:pendente } = await supabase.from("dirigentes").select("*").is("user_id",null).eq("email",(session.user.email||"").trim().toLowerCase()).maybeSingle();
-        if(pendente){
-          const { data:reivindicado } = await supabase.from("dirigentes").update({user_id:session.user.id}).eq("id",pendente.id).select().single();
-          if(reivindicado) data=reivindicado;
-        }
+      const emailL=(session.user.email||"").trim().toLowerCase();
+      const { data:todos } = await supabase.from("dirigentes").select("*");
+      let mine=(todos||[]).find(d=>(d.email||"").trim().toLowerCase()===emailL) || null;
+      // vincula o user_id na primeira vez (só pra limpar o "Convite pendente" na tela)
+      if(mine && !mine.user_id){
+        try{ const { data:upd } = await supabase.from("dirigentes").update({user_id:session.user.id}).eq("id",mine.id).select().maybeSingle(); if(upd) mine=upd; }catch(e){}
       }
       if(!active) return;
-      setRoleInfo(data ? { role:"admin", nome:data.nome, cargo:data.cargo } : { role:"membro" });
+      setRoleInfo(mine ? { role:"admin", nome:mine.nome, cargo:mine.cargo } : { role:"membro" });
     })();
     return ()=>{ active=false; };
   },[session.user.id]);
