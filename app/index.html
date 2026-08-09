@@ -190,6 +190,26 @@ const Auth={
     if(error) return { ok:false, error:error.message };
     return { ok:true };
   },
+  // admin envia e-mail de redefinição pra OUTRA pessoa (por e-mail) — funciona no navegador
+  async resetOutro(email){
+    const { error } = await supabase.auth.resetPasswordForEmail((email||"").trim().toLowerCase(), { redirectTo: window.location.origin + window.location.pathname });
+    if(error) return { ok:false, error: /rate limit/i.test(error.message) ? "Muitas tentativas em pouco tempo — espere alguns minutos." : error.message };
+    return { ok:true };
+  },
+  // admin DEFINE a senha de outra pessoa direto — precisa da Edge Function `admin-set-password` no Supabase
+  async setUserPassword(email, senha){
+    try{
+      const { data, error } = await supabase.functions.invoke("admin-set-password", { body:{ email:(email||"").trim().toLowerCase(), password:senha } });
+      if(error){
+        let msg=error.message||"Não deu certo.";
+        try{ if(error.context && error.context.json){ const t=await error.context.json(); if(t&&t.error) msg=t.error; } }catch(_){}
+        if(/not found|failed to send|fetch|non-2xx/i.test(msg)) msg="A função de servidor 'admin-set-password' ainda não foi criada no Supabase. Use o envio por e-mail, ou peça pra ativar essa função.";
+        return { ok:false, error:msg };
+      }
+      if(data && data.error) return { ok:false, error:data.error };
+      return { ok:true };
+    }catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
+  },
 };
 
 function StoreProvider({ user, children }){
@@ -2154,15 +2174,20 @@ function NovoDirigenteModal({ onClose, onCreate, initial }){
   </div>;
 }
 
-function Dirigentes({ user }){
+function Dirigentes({ user, embedded }){
   const { dirigentes, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
   const [modal,setModal]=useState(false);
   const [editando,setEditando]=useState(null); // convite pendente sendo corrigido
   const [confirmar,setConfirmar]=useState(null); // dirigente a remover
   const confirmados = dirigentes.filter(d=>d.user_id).length;
+  const inviteBtn=<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Convidar dirigente</Button>;
   return <div>
-    <Header title="Dirigentes" sub={dirigentes.length+" com acesso de administrador"}
-      right={<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Convidar dirigente</Button>}/>
+    {embedded
+      ? <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:14}}>
+          <div style={{marginRight:"auto"}}><h3 style={{margin:0,fontSize:18,fontWeight:800}}>Dirigentes</h3><p style={{margin:"2px 0 0",fontSize:13,color:"var(--text-2)"}}>{dirigentes.length+" com acesso de administrador"}</p></div>
+          {inviteBtn}
+        </div>
+      : <Header title="Dirigentes" sub={dirigentes.length+" com acesso de administrador"} right={inviteBtn}/>}
 
     <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",marginBottom:18,fontSize:13,fontWeight:600}}>
       <Icon name="shield" size={16}/>Dirigentes têm acesso total à ferramenta. Convide apenas pessoas da coordenação.
@@ -2210,6 +2235,64 @@ function Dirigentes({ user }){
 }
 
 /* ======================================================================
+   CONFIGURAÇÕES (restrito à Coordenação Geral)
+   ====================================================================== */
+function RedefinirSenhaCard(){
+  const [email,setEmail]=useState("");
+  const [modo,setModo]=useState("email"); // email | direta
+  const [senha,setSenha]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState(null);
+  useLucide();
+  const inp={width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"};
+  const enviarEmail=async()=>{
+    if(!validaEmail(email)){ setMsg({t:"erro",x:"Informe um e-mail válido."}); return; }
+    setBusy(true); setMsg(null);
+    const r=await Auth.resetOutro(email);
+    setBusy(false);
+    setMsg(r.ok?{t:"ok",x:"E-mail de redefinição enviado para "+email+". A pessoa clica no link e escolhe a nova senha."}:{t:"erro",x:r.error});
+  };
+  const definir=async()=>{
+    if(!validaEmail(email)){ setMsg({t:"erro",x:"Informe um e-mail válido."}); return; }
+    if(!senha||senha.length<6){ setMsg({t:"erro",x:"A nova senha precisa de ao menos 6 caracteres."}); return; }
+    setBusy(true); setMsg(null);
+    const r=await Auth.setUserPassword(email,senha);
+    setBusy(false);
+    if(r.ok){ setMsg({t:"ok",x:"Senha de "+email+" alterada com sucesso."}); setSenha(""); }
+    else setMsg({t:"erro",x:r.error});
+  };
+  const btn=on=>({flex:1,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:700,padding:"10px",borderRadius:"var(--r-md)",background:on?"var(--brand-brown)":"var(--surface-2)",color:on?"var(--on-brand)":"var(--text-2)"});
+  return <Card title="Redefinir senha de alguém" subtitle="Envie um link por e-mail ou defina a nova senha na hora" style={{marginBottom:18}}>
+    <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>E-mail da pessoa</label>
+    <input type="email" value={email} onChange={e=>{setEmail(e.target.value);setMsg(null);}} placeholder="pessoa@email.com" style={inp}/>
+    <div style={{display:"flex",gap:8,marginTop:14,marginBottom:14}}>
+      <button onClick={()=>{setModo("email");setMsg(null);}} style={btn(modo==="email")}>Enviar e-mail</button>
+      <button onClick={()=>{setModo("direta");setMsg(null);}} style={btn(modo==="direta")}>Definir senha agora</button>
+    </div>
+    {modo==="email"
+      ? <Button variant="primary" iconLeft={<Icon name="mail" size={16}/>} onClick={enviarEmail} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Enviando...":"Enviar e-mail de redefinição"}</Button>
+      : <>
+          <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nova senha</label>
+          <input type="text" value={senha} onChange={e=>{setSenha(e.target.value);setMsg(null);}} placeholder="Mínimo 6 caracteres" style={inp}/>
+          <div style={{marginTop:14}}>
+            <Button variant="primary" iconLeft={<Icon name="key-round" size={16}/>} onClick={definir} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":"Definir nova senha"}</Button>
+          </div>
+          <div style={{fontSize:12,color:"var(--text-3)",marginTop:10,display:"flex",alignItems:"center",gap:6}}><Icon name="info" size={13}/>A pessoa precisa já ter uma conta. Requer a função de servidor ativada no Supabase (veja instruções).</div>
+        </>}
+    {msg && <div style={{marginTop:14,fontSize:13,fontWeight:600,borderRadius:"var(--r-md)",padding:"11px 14px",display:"flex",alignItems:"center",gap:8,background:msg.t==="ok"?"var(--success-soft)":"var(--danger-soft)",color:msg.t==="ok"?"var(--success)":"var(--brand-red)"}}><Icon name={msg.t==="ok"?"check-circle":"alert-circle"} size={15}/>{msg.x}</div>}
+  </Card>;
+}
+
+function Configuracoes({ user }){
+  useLucide();
+  return <div>
+    <Header title="Configurações" sub="Área restrita da Coordenação Geral"/>
+    <RedefinirSenhaCard/>
+    <Dirigentes user={user} embedded/>
+  </div>;
+}
+
+/* ======================================================================
    SHELL
    ====================================================================== */
 const NAV=[
@@ -2220,10 +2303,12 @@ const NAV=[
   {id:"form",label:"Novo formulário",icon:"file-plus-2"},
   {id:"relatorios",label:"Relatórios",icon:"bar-chart-3"},
   {id:"calendario",label:"Calendário",icon:"calendar-days"},
-  {id:"dirigentes",label:"Dirigentes",icon:"shield-check"},
 ];
 function App({ user, onLogout }){
   const { addJovem, updateJovem } = useStore();
+  // Configurações (senhas + dirigentes) é exclusivo da Coordenação Geral
+  const isCoord = user && user.cargo==="Coordenação Geral";
+  const nav = isCoord ? [...NAV, {id:"config",label:"Configurações",icon:"settings"}] : NAV;
   const [view,setView]=useState("inicio");
   const [cadOpen,setCadOpen]=useState(false);
   const [senhaOpen,setSenhaOpen]=useState(false);
@@ -2245,7 +2330,7 @@ function App({ user, onLogout }){
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
-  else if(view==="dirigentes") screen=<Dirigentes user={user}/>;
+  else if(view==="config" && isCoord) screen=<Configuracoes user={user}/>;
   else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
 
   const editarSalvar=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
@@ -2257,7 +2342,7 @@ function App({ user, onLogout }){
   </>;
 
   if(isMobile){
-    const items=[...NAV, {id:"__senha",label:"Senha",icon:"key-round"}, {id:"__logout",label:"Sair",icon:"log-out"}];
+    const items=[...nav, {id:"__senha",label:"Senha",icon:"key-round"}, {id:"__logout",label:"Sair",icon:"log-out"}];
     return (
       <div style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         <main style={{flex:1,minWidth:0,background:"var(--surface-2)",padding:"18px 16px 84px"}}>{screen}</main>
@@ -2280,7 +2365,7 @@ function App({ user, onLogout }){
           <img src="../design_system_unzip/ejc_claude/assets/ejc-logo.png" alt="EJC" style={{width:"92%",height:"92%",objectFit:"contain"}}/>
         </span>
         <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
-          {NAV.map(it=>{const on=it.id===view;
+          {nav.map(it=>{const on=it.id===view;
             return <button key={it.id} title={it.label} onClick={()=>go(it.id)} style={{position:"relative",width:46,height:46,borderRadius:99,border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:20,background:on?"var(--brand-brown)":"transparent",color:on?"var(--on-brand)":"var(--text-2)",transition:"all .15s"}}>
               <Icon name={it.icon} size={20}/>
             </button>;})}
