@@ -1072,7 +1072,7 @@ function exportarFichaPDF(person){
   const end=enderecoCompleto(f);
   const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
   const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML("Equipes que serviu",(f.equipesCalifornia||[]).map(r=>esc(r.ano+" — "+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
-  const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(esc).join("<br>"),true):"";
+  const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(e=>esc(labelServiuFora(e))).join("<br>"),true):"";
   const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
 
   const corpo=[
@@ -1262,7 +1262,7 @@ function PersonDetailBody({ person }){
           {(f.serviuFora&&f.serviuFora.length>0) && <div style={{marginTop:16}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Já serviu fora</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {f.serviuFora.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px",fontSize:14}}><Icon name="map-pin" size={15}/>{s}</div>)}
+              {f.serviuFora.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px",fontSize:14}}><Icon name="map-pin" size={15}/>{labelServiuFora(s)}</div>)}
             </div>
           </div>}
         </Section>
@@ -1481,7 +1481,6 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
   const { jovens } = useStore();
   const [errors,setErrors]=useState({});
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
-  const [foraNew,setForaNew]=useState("");
 
   // detecção de duplicados (na hora) — só compara quando o valor está completo/válido
   const normEmail = e => (e||"").trim().toLowerCase();
@@ -1672,18 +1671,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           </Field>
         </div>
         {f.serviuForaFlag===true && <div style={{marginTop:14}}>
-          {f.serviuFora.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-            {f.serviuFora.map((s,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-                <Icon name="map-pin" size={15}/><span style={{flex:1,fontSize:14}}>{s}</span>
-                <IconButton label="Remover" size={30} variant="soft" onClick={()=>set("serviuFora",f.serviuFora.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
-              </div>
-            ))}
-          </div>}
-          <div style={{display:"flex",gap:10}}>
-            <Input value={foraNew} onChange={e=>setForaNew(e.target.value)} placeholder="EJC Padre Eustáquio em 2025..." onKeyDown={e=>{if(e.key==="Enter"&&foraNew.trim()){set("serviuFora",[...f.serviuFora,foraNew.trim()]);setForaNew("");}}}/>
-            <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={()=>{if(foraNew.trim()){set("serviuFora",[...f.serviuFora,foraNew.trim()]);setForaNew("");}}}>Adicionar</Button>
-          </div>
+          <RepeatServiuFora value={f.serviuFora} onChange={v=>set("serviuFora",v)}/>
         </div>}
       </Section>
 
@@ -1769,6 +1757,45 @@ function EquipesPorAno({ value, onChange, years, needsYear }){
         </label>
       </div>;
     })}
+  </div>;
+}
+
+// rótulo de uma entrada de "serviu fora" (aceita string antiga ou objeto novo {ejc,equipe,ano})
+function labelServiuFora(e){ return typeof e==="string" ? e : [e.ejc,e.equipe,e.ano].filter(Boolean).join(" · "); }
+const ANOS_SERVICO=(()=>{ const a=[]; const y=new Date().getFullYear(); for(let x=y;x>=1990;x--) a.push(x); return a; })();
+
+// "Já serviu fora?" — lista repetível com EJC (texto), Equipe (dropdown) e Ano
+function RepeatServiuFora({ value, onChange }){
+  const [ejc,setEjc]=useState("");
+  const [equipe,setEquipe]=useState("");
+  const [ano,setAno]=useState("");
+  const add=()=>{ if(!ejc.trim()) return; onChange([...(value||[]),{ejc:ejc.trim(),equipe,ano}]); setEjc("");setEquipe("");setAno(""); };
+  const selStyle={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",width:"100%"};
+  const lbl={display:"block",fontSize:12,fontWeight:600,marginBottom:5,color:"var(--text-2)"};
+  return <div>
+    {(value||[]).length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+      {value.map((e,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+          <Icon name="map-pin" size={15}/><span style={{flex:1,fontSize:14,fontWeight:600}}>{labelServiuFora(e)}</span>
+          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(value.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+        </div>
+      ))}
+    </div>}
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+      <div style={{flex:"2 1 200px"}}>
+        <label style={lbl}>Qual EJC?</label>
+        <Input value={ejc} onChange={e=>setEjc(e.target.value)} placeholder="Ex: EJC Padre Eustáquio"/>
+      </div>
+      <div style={{flex:"1 1 150px"}}>
+        <label style={lbl}>Equipe</label>
+        <select value={equipe} onChange={e=>setEquipe(e.target.value)} style={selStyle}><option value="">Selecione...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}</select>
+      </div>
+      <div style={{flex:"1 1 110px"}}>
+        <label style={lbl}>Ano</label>
+        <select value={ano} onChange={e=>setAno(e.target.value)} style={selStyle}><option value="">Ano...</option>{ANOS_SERVICO.map(y=><option key={y}>{y}</option>)}</select>
+      </div>
+      <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={add}>Adicionar</Button>
+    </div>
   </div>;
 }
 
