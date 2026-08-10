@@ -174,7 +174,8 @@ function fichaToTioFields(f){
   const tioLbl=apelidoOuPrimeiro(f.tioNome,f.tioApelido)||"Tio";
   const tel = f.tiaTelPrincipal ? f.tiaTel : f.tioTelPrincipal ? f.tioTel : (f.tiaTel||f.tioTel);
   const ejc = f.fezCalifornia ? (f.qualFez||"—") : (f.qualEcc||"—");
-  return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:enderecoCompleto(f), inst:null, foto:f.foto||null, ficha:f };
+  const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
+  return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f };
 }
 function formToTio(f){ return { ativo:true, ...fichaToTioFields(f) }; }
 function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
@@ -407,9 +408,23 @@ function parseNascBR(s){
   if(dia<1||dia>31||mes<1||mes>12) return null;
   return {dia,mes,ano};
 }
-// aniversariantes ativos com data de nascimento válida
-function aniversariantes(jovens){
-  return (jovens||[]).filter(j=>j.ativo).map(j=>{ const p=j.ficha&&parseNascBR(j.ficha.nasc); return p?{j,dia:p.dia,mes:p.mes,ano:p.ano}:null; }).filter(Boolean);
+// aniversariantes ativos com data de nascimento válida — jovens (1 data cada) + tios (tia e tio, até 2 datas por casal)
+function aniversariantes(jovens,tios){
+  const out=[];
+  (jovens||[]).forEach(j=>{
+    if(!j.ativo) return;
+    const p=j.ficha&&parseNascBR(j.ficha.nasc);
+    if(p) out.push({person:j, label:j.n, foto:j.foto, dia:p.dia, mes:p.mes, ano:p.ano});
+  });
+  (tios||[]).forEach(t=>{
+    if(!t.ativo) return;
+    const f=t.ficha||{};
+    const pTia=parseNascBR(f.tiaNasc);
+    if(pTia) out.push({person:t, label:"Tia "+(apelidoOuPrimeiro(f.tiaNome,f.tiaApelido)||"Tia"), foto:t.foto, dia:pTia.dia, mes:pTia.mes, ano:pTia.ano});
+    const pTio=parseNascBR(f.tioNasc);
+    if(pTio) out.push({person:t, label:"Tio "+(apelidoOuPrimeiro(f.tioNome,f.tioApelido)||"Tio"), foto:t.foto, dia:pTio.dia, mes:pTio.mes, ano:pTio.ano});
+  });
+  return out;
 }
 function inicioSemana(base){ const d=new Date(base); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d; }
 // (dia/mes) cai na janela [ini,fim]? considera virada de ano → retorna a Date ou null
@@ -425,9 +440,9 @@ function LinhaAniversario({ a, hoje }){
   const idade=(a.data?a.data.getFullYear():hoje.getFullYear())-a.ano;
   const ehHoje=a.data&&a.data.getDate()===hoje.getDate()&&a.data.getMonth()===hoje.getMonth();
   return <div style={{display:"flex",alignItems:"center",gap:12,background:ehHoje?"var(--brand-yellow-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-    <Avatar src={a.j.foto} name={a.j.n} size={40}/>
+    <Avatar src={a.foto} name={a.label} size={40}/>
     <div style={{flex:1,minWidth:0}}>
-      <div style={{fontWeight:700,fontSize:14}}>{a.j.n}</div>
+      <div style={{fontWeight:700,fontSize:14}}>{a.label}</div>
       <div style={{fontSize:12.5,color:"var(--text-2)"}}>{pad2(a.dia)}/{pad2(a.mes)}{a.data?(" · "+DIAS_ABREV[a.data.getDay()]):""}{ehHoje?" · Hoje 🎉":""}</div>
     </div>
     <Badge tone="brand">{idade} anos</Badge>
@@ -435,15 +450,15 @@ function LinhaAniversario({ a, hoje }){
 }
 
 function AniversariosCard({ onAbrir }){
-  const { jovens } = useStore();
+  const { jovens, tios } = useStore();
   const hoje=new Date();
   const ini=inicioSemana(hoje); const fim=new Date(ini); fim.setDate(fim.getDate()+6);
-  const lista=aniversariantes(jovens).map(a=>{ const d=aniversarioNaJanela(a.dia,a.mes,ini,fim); return d?{...a,data:d}:null; }).filter(Boolean).sort((x,y)=>x.data-y.data);
+  const lista=aniversariantes(jovens,tios).map(a=>{ const d=aniversarioNaJanela(a.dia,a.mes,ini,fim); return d?{...a,data:d}:null; }).filter(Boolean).sort((x,y)=>x.data-y.data);
   return <Card title="🎂 Aniversários da semana" subtitle={fmtDataBR(ymd(ini))+" a "+fmtDataBR(ymd(fim))}
     action={<button onClick={onAbrir} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver ano todo<Icon name="chevron-right" size={15}/></button>}>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {lista.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Ninguém faz aniversário esta semana.</div>}
-      {lista.map(a=><LinhaAniversario key={a.j.id} a={a} hoje={hoje}/>)}
+      {lista.map((a,i)=><LinhaAniversario key={a.person.id+"-"+a.label+"-"+i} a={a} hoje={hoje}/>)}
     </div>
   </Card>;
 }
@@ -509,9 +524,9 @@ function EventosResumoMembro(){
 }
 
 function AniversariosModal({ onClose }){
-  const { jovens } = useStore();
+  const { jovens, tios } = useStore();
   const hoje=new Date();
-  const todos=aniversariantes(jovens);
+  const todos=aniversariantes(jovens,tios);
   const [modo,setModo]=useState("mes"); // semana | mes | dia
   const [mesSel,setMesSel]=useState(hoje.getMonth()+1);
   const [diaSel,setDiaSel]=useState(hoje.getDate());
@@ -524,7 +539,7 @@ function AniversariosModal({ onClose }){
   } else if(modo==="mes"){
     lista=todos.filter(a=>a.mes===mesSel).map(a=>({...a,data:new Date(hoje.getFullYear(),a.mes-1,a.dia)})).sort((x,y)=>x.dia-y.dia);
   } else {
-    lista=todos.filter(a=>a.dia===diaSel&&a.mes===diaMesSel).map(a=>({...a,data:new Date(hoje.getFullYear(),a.mes-1,a.dia)})).sort((x,y)=>x.j.n.localeCompare(y.j.n));
+    lista=todos.filter(a=>a.dia===diaSel&&a.mes===diaMesSel).map(a=>({...a,data:new Date(hoje.getFullYear(),a.mes-1,a.dia)})).sort((x,y)=>x.label.localeCompare(y.label));
   }
   const sel={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 12px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"};
   const btn=on=>({flex:1,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:700,padding:"10px",borderRadius:"var(--r-md)",background:on?"var(--brand-brown)":"var(--surface-2)",color:on?"var(--on-brand)":"var(--text-2)"});
@@ -549,7 +564,7 @@ function AniversariosModal({ onClose }){
       <div style={{fontSize:13,color:"var(--text-2)",marginBottom:10}}>{lista.length} {lista.length===1?"aniversariante":"aniversariantes"}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10,overflow:"auto"}}>
         {lista.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum aniversariante neste filtro.</div>}
-        {lista.map(a=><LinhaAniversario key={a.j.id} a={a} hoje={hoje}/>)}
+        {lista.map((a,i)=><LinhaAniversario key={a.person.id+"-"+a.label+"-"+i} a={a} hoje={hoje}/>)}
       </div>
     </div>
   </div>;
@@ -2517,30 +2532,31 @@ function BarRow({ label, value, max, color, icon }){
 const CAT_PALETTE=["var(--cat-terracotta)","var(--cat-plum)","var(--cat-blue)","var(--cat-olive)","var(--cat-brown)","var(--cat-yellow)","var(--cat-red)"];
 
 function Relatorios(){
-  const { jovens } = useStore();
-  const ativos = jovens.filter(j=>j.ativo);
-  const musicos = ativos.filter(j=>j.inst);
+  const { jovens, tios } = useStore();
+  const ativosMJC = jovens.filter(j=>j.ativo); // só jovens têm equipe do MJC
+  const ativosTodos = [...jovens, ...tios].filter(p=>p.ativo); // pessoas ativas em geral (inclui casais de tios)
+  const musicos = ativosTodos.filter(p=>p.inst);
   // músicos por instrumento (inst pode ter vários separados por vírgula)
   const instCount={};
   musicos.forEach(m=>String(m.inst).split(/,\s*/).forEach(i=>{const k=i.trim();if(k)instCount[k]=(instCount[k]||0)+1;}));
   const instList=Object.entries(instCount).sort((a,b)=>b[1]-a[1]);
   const maxInst=Math.max(1,...instList.map(x=>x[1]));
   // pessoas ativas por equipe do MJC
-  const teamList=MJC_TEAMS.map(t=>[t,ativos.filter(j=>j.mjc===t).length]);
+  const teamList=MJC_TEAMS.map(t=>[t,ativosMJC.filter(j=>j.mjc===t).length]);
   const maxTeam=Math.max(1,...teamList.map(x=>x[1]));
 
   return <div>
     <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC"/>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16,marginBottom:20}}>
-      <StatTile label="Pessoas ativas" value={ativos.length} icon="users" color="var(--cat-blue)"/>
+      <StatTile label="Pessoas ativas" value={ativosTodos.length} icon="users" color="var(--cat-blue)"/>
       <StatTile label="Músicos ativos" value={musicos.length} icon="music" color="var(--cat-plum)"/>
       <StatTile label="Instrumentos" value={instList.length} icon="guitar" color="var(--cat-terracotta)"/>
       <StatTile label="Equipes do MJC" value={MJC_TEAMS.length} icon="layout-grid" color="var(--cat-olive)"/>
     </div>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
-      <Card title="Músicos ativos por instrumento" subtitle={musicos.length+" músicos ativos"}>
+      <Card title="Músicos ativos por instrumento" subtitle={musicos.length+" músicos ativos (jovens e tios)"}>
         {instList.length===0
           ? <div style={{padding:"30px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum músico ativo cadastrado.</div>
           : <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -2548,7 +2564,7 @@ function Relatorios(){
             </div>}
       </Card>
 
-      <Card title="Pessoas ativas por equipe do MJC" subtitle={ativos.length+" pessoas ativas"}>
+      <Card title="Pessoas ativas por equipe do MJC" subtitle={ativosMJC.length+" pessoas ativas"}>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {teamList.map(([t,n])=><BarRow key={t} label={t} value={n} max={maxTeam} color={MJC_COLOR[t]} icon={MJC_ICON[t]}/>)}
         </div>
