@@ -267,7 +267,7 @@ function StoreProvider({ user, children }){
       setLoading(true);
       const [jRes,tRes,mRes,fRes,dRes,eRes] = await Promise.all([
         supabase.from("jovens").select("*").order("created_at",{ascending:false}),
-        isAdmin ? supabase.from("tios").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
+        supabase.from("tios").select("*").order("created_at",{ascending:false}), // membro só recebe a própria linha (RLS)
         isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
         supabase.from("formularios").select("*"),
         isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
@@ -2706,10 +2706,10 @@ function TipoCadastroModal({ onClose, onChoose }){
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
     <div onClick={e=>e.stopPropagation()} style={{width:460,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
       <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Novo cadastro</h3>
-      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Quem você está cadastrando?</p>
+      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Qual ficha você quer preencher?</p>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {opt("user","Sou Jovem","Ficha individual do jovem",()=>onChoose("jovem"))}
-        {opt("heart-handshake","Sou casal de tios","Ficha do casal de tios",()=>onChoose("tios"))}
+        {opt("user","Ficha de jovem","Cadastro individual de um jovem",()=>onChoose("jovem"))}
+        {opt("heart-handshake","Ficha de tios","Cadastro de um casal de tios",()=>onChoose("tios"))}
       </div>
       <div style={{marginTop:18,textAlign:"right"}}>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
@@ -3092,33 +3092,52 @@ function SignupScreen({ onGoLogin }){
    ÁREA DO MEMBRO — só a própria ficha
    ====================================================================== */
 function MemberArea({ user, onLogout }){
-  const { jovens, addJovem, updateJovem, loading } = useStore();
-  const meu = jovens[0] || null; // RLS já garante que só a própria linha chega até aqui
+  const { jovens, tios, addJovem, updateJovem, addTio, updateTio, loading } = useStore();
+  const meuJovem = jovens[0] || null; // RLS já garante que só a própria linha chega até aqui
+  const meuTio = tios[0] || null;
+  const meu = meuJovem || meuTio;
+  const meuTipo = meuJovem ? "jovem" : (meuTio ? "tios" : null); // null = ainda não escolheu/preencheu
   const [manualEdit,setManualEdit]=useState(false);
   const [senhaOpen,setSenhaOpen]=useState(false);
+  const [tipoEscolhido,setTipoEscolhido]=useState(null); // "jovem"|"tios" — escolha no primeiro cadastro
   useLucide();
 
-  const salvar=async (f)=>{
-    if(meu){ await updateJovem(meu.id, fichaToFields(f)); }
-    else {
-      const novo=formToJovem({...f, email:f.email||user.email});
-      await addJovem({...novo, user_id:user.id});
-    }
-    setManualEdit(false);
+  const salvarJovem=async (f)=>{
+    if(meuJovem){ await updateJovem(meuJovem.id, fichaToFields(f)); }
+    else{ const novo=formToJovem({...f, email:f.email||user.email}); await addJovem({...novo, user_id:user.id}); }
+    setManualEdit(false); setTipoEscolhido(null);
+  };
+  const salvarTio=async (f)=>{
+    if(meuTio){ await updateTio(meuTio.id, fichaToTioFields(f)); }
+    else{ const novo=formToTio(f); await addTio({...novo, user_id:user.id}); }
+    setManualEdit(false); setTipoEscolhido(null);
   };
 
   if(loading) return <div style={{minHeight:"calc(100vh - 44px)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text-2)"}}>Carregando...</div>;
 
   const editing = manualEdit || !meu;
 
-  if(editing) return <FichaForm
-    initial={meu?meu.ficha:{email:user.email}}
-    selfId={meu?meu.id:null}
-    overline={meu?"ATUALIZAR CADASTRO":"MEU CADASTRO"}
-    title={meu?"Atualizar minha ficha":"Preencher minha ficha"}
-    saveLabel={meu?"Salvar alterações":"Concluir cadastro"}
-    onClose={()=>{ if(meu) setManualEdit(false); else onLogout(); }}
-    onSave={salvar}/>;
+  // primeiro acesso, ainda sem ficha nenhuma: pergunta jovem ou tios antes de abrir o formulário
+  if(editing && !meu && !tipoEscolhido) return <TipoCadastroModal onClose={onLogout} onChoose={setTipoEscolhido}/>;
+
+  if(editing){
+    const tipo = meuTipo || tipoEscolhido; // editando já-existente usa o tipo real; primeiro cadastro usa a escolha
+    if(tipo==="tios") return <TiosForm
+      initial={meuTio?meuTio.ficha:{}}
+      overline={meuTio?"ATUALIZAR CADASTRO":"MEU CADASTRO"}
+      title={meuTio?"Atualizar ficha dos tios":"Preencher ficha dos tios"}
+      saveLabel={meuTio?"Salvar alterações":"Concluir cadastro"}
+      onClose={()=>{ if(meuTio) setManualEdit(false); else { setTipoEscolhido(null); } }}
+      onSave={salvarTio}/>;
+    return <FichaForm
+      initial={meuJovem?meuJovem.ficha:{email:user.email}}
+      selfId={meuJovem?meuJovem.id:null}
+      overline={meuJovem?"ATUALIZAR CADASTRO":"MEU CADASTRO"}
+      title={meuJovem?"Atualizar minha ficha":"Preencher minha ficha"}
+      saveLabel={meuJovem?"Salvar alterações":"Concluir cadastro"}
+      onClose={()=>{ if(meuJovem) setManualEdit(false); else { setTipoEscolhido(null); } }}
+      onSave={salvarJovem}/>;
+  }
 
   return <div style={{minHeight:"calc(100vh - 44px)"}}>
     <div style={{maxWidth:820,margin:"0 auto",padding:"18px 22px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
