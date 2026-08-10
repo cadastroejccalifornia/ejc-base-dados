@@ -1,7 +1,9 @@
 // ============================================================
 // EJC Califórnia — Edge Function: admin-set-password
-// Permite que um dirigente de "Coordenação Geral" defina a senha de outra
-// pessoa diretamente (o navegador não pode fazer isso por segurança).
+// Permite que o admin dono (e-mail em SUPER_ADMINS) defina a senha de
+// outra pessoa diretamente (o navegador não pode fazer isso por segurança).
+// Exclusivo do dono — nenhum outro dirigente tem acesso, mesmo sendo
+// "Coordenação Geral".
 //
 // COMO ATIVAR (uma vez):
 //   1) Supabase Dashboard > Edge Functions > Deploy a new function
@@ -13,6 +15,9 @@
 // já ficam disponíveis automaticamente dentro da função.
 // ============================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+// mesma lista do app/index.html (SUPER_ADMINS) — mantenha os dois em sincronia
+const SUPER_ADMINS = ["cadastro.ejccalifornia@gmail.com"];
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -37,12 +42,9 @@ Deno.serve(async (req) => {
     if (uErr || !uData?.user) return json({ error: "Não autenticado." }, 401);
     const caller = uData.user;
 
-    // 2) o chamador precisa ser dirigente de Coordenação Geral
-    const { data: dirs } = await admin.from("dirigentes").select("cargo,user_id,email");
-    const isCoord = (dirs || []).some((d: any) =>
-      (d.user_id === caller.id || (d.email || "").toLowerCase() === (caller.email || "").toLowerCase())
-      && d.cargo === "Coordenação Geral");
-    if (!isCoord) return json({ error: "Acesso restrito à Coordenação Geral." }, 403);
+    // 2) o chamador precisa ser o admin dono (por e-mail)
+    const isOwner = SUPER_ADMINS.includes((caller.email || "").trim().toLowerCase());
+    if (!isOwner) return json({ error: "Acesso restrito ao administrador." }, 403);
 
     // 3) valida entrada
     const { email, password } = await req.json();

@@ -2304,11 +2304,13 @@ const NAV=[
   {id:"relatorios",label:"Relatórios",icon:"bar-chart-3"},
   {id:"calendario",label:"Calendário",icon:"calendar-days"},
 ];
+// e-mails com acesso à aba Configurações (senhas + dirigentes) — exclusivo do admin dono
+const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
 function App({ user, onLogout }){
   const { addJovem, updateJovem } = useStore();
-  // Configurações (senhas + dirigentes) é exclusivo da Coordenação Geral
-  const isCoord = user && user.cargo==="Coordenação Geral";
-  const nav = isCoord ? [...NAV, {id:"config",label:"Configurações",icon:"settings"}] : NAV;
+  // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
+  const isOwner = user && SUPER_ADMINS.includes((user.email||"").trim().toLowerCase());
+  const nav = isOwner ? [...NAV, {id:"config",label:"Configurações",icon:"settings"}] : NAV;
   const [view,setView]=useState("inicio");
   const [cadOpen,setCadOpen]=useState(false);
   const [senhaOpen,setSenhaOpen]=useState(false);
@@ -2330,7 +2332,7 @@ function App({ user, onLogout }){
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
-  else if(view==="config" && isCoord) screen=<Configuracoes user={user}/>;
+  else if(view==="config" && isOwner) screen=<Configuracoes user={user}/>;
   else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
 
   const editarSalvar=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
