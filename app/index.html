@@ -174,7 +174,7 @@ function fichaToTioFields(f){
   const tioLbl=apelidoOuPrimeiro(f.tioNome,f.tioApelido)||"Tio";
   const tel = f.tiaTelPrincipal ? f.tiaTel : f.tioTelPrincipal ? f.tioTel : (f.tiaTel||f.tioTel);
   const ejc = f.fezCalifornia ? (f.qualFez||"—") : (f.qualEcc||"—");
-  return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:"—", inst:null, foto:f.foto||null, ficha:f };
+  return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:enderecoCompleto(f), inst:null, foto:f.foto||null, ficha:f };
 }
 function formToTio(f){ return { ativo:true, ...fichaToTioFields(f) }; }
 function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
@@ -1151,6 +1151,7 @@ function exportarFichaPDF(person){
     const equipesTio = f.fezCalifornia===true ? f.equipesEjc : f.equipesCalifornia;
     const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",(equipesTio||[]).map(r=>esc((r.ejc?r.ejc+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
     const neuroPessoa=pref=>(f[pref+"Neuro"]||[]).map(n=>n==="Outra"?(f[pref+"NeuroOutra"]||"Outra"):n).join(", ");
+    const endTio=enderecoCompleto(f);
     corpo=[
       section("Tia e Tio",
         row("Nome da tia",f.tiaNome)+row("Nome do tio",f.tioNome)+
@@ -1159,7 +1160,8 @@ function exportarFichaPDF(person){
         row("Instagram da tia",f.tiaInsta)+row("Instagram do tio",f.tioInsta)+
         row("Data de nascimento da tia",f.tiaNasc)+row("Data de nascimento do tio",f.tioNasc)+
         row("E-mail da tia",f.tiaEmail)+row("E-mail do tio",f.tioEmail)+
-        row("Tem matrimônio?",yn(f.matrimonio))),
+        row("Tem matrimônio?",yn(f.matrimonio))+
+        row("Endereço atual",endTio==="—"?"":endTio)),
       section("ECC no Califórnia",
         row("Fez ECC no Califórnia?",yn(f.fezCalifornia))+
         (f.fezCalifornia===true?row("Qual fez?",f.qualFez):"")+
@@ -1446,6 +1448,7 @@ function TioDetailBody({ f }){
       </div>
       <div style={{marginTop:16}}>
         <InfoRow label="Tem matrimônio?" value={f.matrimonio===true?"Sim":f.matrimonio===false?"Não":null}/>
+        <div style={{marginTop:16}}><InfoRow label="Endereço atual" value={enderecoCompleto(f)} full/></div>
       </div>
     </Section>
 
@@ -1902,6 +1905,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     musico:null, musicoQuem:"", instrumentos:[],
     tiaRestrFisica:"", tiaRestrFisicaOutra:"", tiaRestrAlim:"", tiaRestrAlimOutra:"", tiaNeuro:[], tiaNeuroOutra:"",
     tioRestrFisica:"", tioRestrFisicaOutra:"", tioRestrAlim:"", tioRestrAlimOutra:"", tioNeuro:[], tioNeuroOutra:"",
+    endereco:"", complemento:"", bairro:"", cidade:"",
     ...(initial||{}),
   });
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
@@ -1919,6 +1923,9 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     if(f.tioEmail && !validaEmail(f.tioEmail)) errs.tioEmail="E-mail inválido.";
     if(f.tiaNasc && !validaData(f.tiaNasc)) errs.tiaNasc="Data inválida — use DD/MM/AAAA.";
     if(f.tioNasc && !validaData(f.tioNasc)) errs.tioNasc="Data inválida — use DD/MM/AAAA.";
+    if(!f.endereco || !f.endereco.trim()) errs.endereco="Informe o endereço atual (rua e número).";
+    if(!f.bairro || !f.bairro.trim()) errs.bairro="Informe o bairro.";
+    if(!f.cidade || !f.cidade.trim()) errs.cidade="Informe a cidade.";
     setErrors(errs);
     if(Object.keys(errs).length){
       setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
@@ -1988,6 +1995,17 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
         <div style={{marginTop:20}}>
           <Field label="Tem matrimônio?"><YesNo value={f.matrimonio} onChange={v=>set("matrimonio",v)}/></Field>
+        </div>
+
+        <div style={{marginTop:20}}>
+          <Field label="Endereço atual" required span error={errors.endereco} hint="Rua e número">
+            <Input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} error={!!errors.endereco} placeholder="Ex: Rua Exemplo, 123"/>
+          </Field>
+        </div>
+        <div style={{...grid2,marginTop:16}}>
+          <Field label="Complemento" hint="Apto, bloco, casa..."><Input value={f.complemento||""} onChange={e=>set("complemento",e.target.value)} placeholder="Ex: Apto 202, Bloco B"/></Field>
+          <Field label="Bairro" required error={errors.bairro}><Input value={f.bairro||""} onChange={e=>set("bairro",e.target.value)} error={!!errors.bairro} placeholder="Ex: Céu Azul"/></Field>
+          <Field label="Cidade" required error={errors.cidade}><Input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} error={!!errors.cidade} placeholder="Ex: Belo Horizonte"/></Field>
         </div>
       </Section>
 
