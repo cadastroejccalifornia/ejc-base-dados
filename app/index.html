@@ -116,6 +116,22 @@ const PAPEIS_MOITA=["Sem papel","Bode","Patricinha","Nega Maria","Perna Quebrada
 
 const mjcColor = t => MJC_COLOR[t] || "var(--cat-brown)";
 
+// numeral romano (1-39) — usado na lista de ECC dos tios (sem ano, ao contrário do EJC_YEARS)
+function toRoman(num){
+  const vals=[[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
+  let s=""; for(const [v,r] of vals){ while(num>=v){ s+=r; num-=v; } } return s;
+}
+// XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX)
+const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
+// regra dos tios: XXIX → só 1 equipe; XXVIII → só 2; o restante → até 3 (2 padrão + opção de +1)
+function maxEquipesEcc(qualFez){
+  const idx=ECC_LIST.indexOf(qualFez);
+  if(idx===0) return 1;
+  if(idx===1) return 2;
+  if(idx>=2) return 3;
+  return 2;
+}
+
 // ---------- Supabase (banco + autenticação reais) ----------
 const supabase = window.supabase.createClient(
   "https://lmxepyuclguashzafzak.supabase.co",
@@ -135,8 +151,26 @@ function jovemToRow(j){
   if(j.user_id) row.user_id=j.user_id;
   return row;
 }
-function rowToTio(r){ return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, ejc:r.ejc, end:r.endereco, ativo:r.ativo }; }
-function tioToRow(t){ return { nome:t.n, telefone:t.tel, ejc:t.ejc, endereco:t.end, ativo:t.ativo }; }
+function rowToTio(r){ return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, ejc:r.ejc, end:r.endereco, ativo:r.ativo, foto:r.foto, ficha:r.ficha }; }
+function tioToRow(t){
+  const row={ nome:t.n, telefone:t.tel, ejc:t.ejc, endereco:t.end, ativo:t.ativo, foto:t.foto||null, ficha:t.ficha };
+  if(t.user_id) row.user_id=t.user_id;
+  return row;
+}
+// nome/apelido curto de uma pessoa do casal (usado no nome do card)
+function apelidoOuPrimeiro(nome,apelido){
+  if(apelido&&apelido.trim()) return apelido.trim();
+  return (nome||"").trim().split(/\s+/)[0]||"";
+}
+// campos-resumo derivados da ficha do casal de tios
+function fichaToTioFields(f){
+  const tiaLbl=apelidoOuPrimeiro(f.tiaNome,f.tiaApelido)||"Tia";
+  const tioLbl=apelidoOuPrimeiro(f.tioNome,f.tioApelido)||"Tio";
+  const tel = f.tiaTelPrincipal ? f.tiaTel : f.tioTelPrincipal ? f.tioTel : (f.tiaTel||f.tioTel);
+  const ejc = f.fezCalifornia ? (f.qualFez||"—") : (f.qualEcc||"—");
+  return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:"—", inst:null, foto:f.foto||null, ficha:f };
+}
+function formToTio(f){ return { ativo:true, ...fichaToTioFields(f) }; }
 function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
 function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
@@ -257,6 +291,16 @@ function StoreProvider({ user, children }){
       const { data, error } = await supabase.from("jovens").update(jovemToRow(patch)).eq("id",id).select().single();
       if(!error) setJovens(l=>l.map(j=>j.id===id?rowToJovem(data):j));
       return { data: data?rowToJovem(data):null, error };
+    },
+    addTio: async (t)=>{
+      const { data, error } = await supabase.from("tios").insert(tioToRow(t)).select().single();
+      if(!error) setTios(l=>[rowToTio(data),...l]);
+      return { data: data?rowToTio(data):null, error };
+    },
+    updateTio: async (id,patch)=>{
+      const { data, error } = await supabase.from("tios").update(tioToRow(patch)).eq("id",id).select().single();
+      if(!error) setTios(l=>l.map(t=>t.id===id?rowToTio(data):t));
+      return { data: data?rowToTio(data):null, error };
     },
     // convida um novo dirigente: cria o convite (user_id ainda nulo) e manda um e-mail de acesso.
     // quando a pessoa entrar pela primeira vez com esse e-mail, o AuthedGate reivindica o convite
@@ -1083,42 +1127,71 @@ const rowGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,
 // gera um PDF da ficha da pessoa via janela de impressão (texto selecionável, sem lib pesada)
 function exportarFichaPDF(person){
   const f=person.ficha||{};
+  const isTio=person.mjc===undefined;
   const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
   const has=v=>v!=null&&v!==""&&!(Array.isArray(v)&&v.length===0);
   const yn=v=>v===true?"Sim":v===false?"Não":"";
   const row=(label,value)=>has(value)?`<div class="row"><span class="lbl">${esc(label)}</span><span class="val">${esc(value)}</span></div>`:"";
   const rowHTML=(label,html,show)=>show?`<div class="row"><span class="lbl">${esc(label)}</span><span class="val">${html}</span></div>`:"";
   const section=(title,inner)=>inner.trim()?`<section><h2>${esc(title)}</h2>${inner}</section>`:"";
-  const end=enderecoCompleto(f);
-  const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
-  const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML("Equipes que serviu",(f.equipesCalifornia||[]).map(r=>esc(r.ano+" — "+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
-  const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(e=>esc(labelServiuFora(e))).join("<br>"),true):"";
-  const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
 
-  const corpo=[
-    section("Dados pessoais",
-      row("Nome completo",f.nome||person.n)+row("Apelido",f.apelido)+row("Data de nascimento",f.nasc)+
-      row("CPF",f.cpf)+row("WhatsApp",f.whats||person.tel)+row("E-mail",f.email)+row("Instagram",f.insta)+
-      row("Endereço atual",end==="—"?"":end)),
-    section("Sacramentos",row("Sacramentos",(f.sacramentos||[]).join(", "))),
-    section("Família",
-      row("Pais",f.paisEstado)+
-      row("Pai",f.paiNome?(f.paiNome+(f.paiFalecido?" (falecido)":"")):"")+row("Telefone do pai",f.paiFalecido?"":f.paiTel)+
-      row("Mãe",f.maeNome?(f.maeNome+(f.maeFalecida?" (falecida)":"")):"")+row("Telefone da mãe",f.maeFalecida?"":f.maeTel)),
-    section("EJC no Califórnia",
-      row("Fez EJC no Califórnia?",yn(f.fezCalifornia))+
-      (f.fezCalifornia===true?(row("Ano que fez",f.anoEjc)+rowHTML("Círculo",circuloDot+esc(f.circulo),!!f.circulo)+row("Casal de tio",f.casalTio)):"")+
-      (f.fezCalifornia===false?row("Qual seu EJC?",f.qualEjc):"")+equipesHTML),
-    section("Experiência de serviço",
-      row("Já foi garçom?",yn(f.garcom))+(f.garcom===true?row("Onde?",f.garcomOnde):"")+
-      row("Já foi moita?",yn(f.moita))+(f.moita===true?(row("Quando e onde?",f.moitaOnde)+row("Papel",f.moitaPapel==="Outro"?(f.moitaPapelOutro||"Outro"):f.moitaPapel)):"")+foraHTML),
-    section("Equipe atual do MJC",row("Equipe atual do MJC",f.mjcAtual)),
-    section("Música",row("Músico?",yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
-    section("Saúde e restrições",
-      row("Restrição física",f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica)+
-      row("Restrição alimentar",f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim)+
-      row("Neurodivergências e saúde mental",neuroStr)),
-  ].join("");
+  let corpo, overline;
+  if(isTio){
+    overline="Ficha dos tios";
+    const equipesTio = f.fezCalifornia===true ? f.equipesEjc : f.equipesCalifornia;
+    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",(equipesTio||[]).map(r=>esc(r.eq)).join("<br>"),true):"";
+    const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
+    corpo=[
+      section("Tia e Tio",
+        row("Nome da tia",f.tiaNome)+row("Nome do tio",f.tioNome)+
+        row("Apelido da tia",f.tiaApelido)+row("Apelido do tio",f.tioApelido)+
+        row("Telefone da tia",f.tiaTel+(f.tiaTelPrincipal?" (principal)":""))+row("Telefone do tio",f.tioTel+(f.tioTelPrincipal?" (principal)":""))+
+        row("Instagram da tia",f.tiaInsta)+row("Instagram do tio",f.tioInsta)+
+        row("Data de nascimento da tia",f.tiaNasc)+row("Data de nascimento do tio",f.tioNasc)+
+        row("E-mail da tia",f.tiaEmail)+row("E-mail do tio",f.tioEmail)+
+        row("Tem matrimônio?",yn(f.matrimonio))),
+      section("ECC no Califórnia",
+        row("Fez ECC no Califórnia?",yn(f.fezCalifornia))+
+        (f.fezCalifornia===true?row("Qual fez?",f.qualFez):"")+
+        (f.fezCalifornia===false?row("Qual seu ECC?",f.qualEcc):"")+equipesTioHTML),
+      section("Música",row("Músico?",f.musico?("Sim — "+(f.musicoQuem||"—")):yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
+      section("Saúde e restrições",
+        row("Restrição física",f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica)+
+        row("Restrição alimentar",f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim)+
+        row("Neurodivergências e saúde mental",neuroStr)),
+    ].join("");
+  } else {
+    overline="Ficha do jovem";
+    const end=enderecoCompleto(f);
+    const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
+    const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu",(f.equipesCalifornia||[]).map(r=>esc((r.ano?r.ano+" — ":"")+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
+    const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(e=>esc(labelServiuFora(e))).join("<br>"),true):"";
+    const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
+    corpo=[
+      section("Dados pessoais",
+        row("Nome completo",f.nome||person.n)+row("Apelido",f.apelido)+row("Data de nascimento",f.nasc)+
+        row("CPF",f.cpf)+row("WhatsApp",f.whats||person.tel)+row("E-mail",f.email)+row("Instagram",f.insta)+
+        row("Endereço atual",end==="—"?"":end)),
+      section("Sacramentos",row("Sacramentos",(f.sacramentos||[]).join(", "))),
+      section("Família",
+        row("Pais",f.paisEstado)+
+        row("Pai",f.paiNome?(f.paiNome+(f.paiFalecido?" (falecido)":"")):"")+row("Telefone do pai",f.paiFalecido?"":f.paiTel)+
+        row("Mãe",f.maeNome?(f.maeNome+(f.maeFalecida?" (falecida)":"")):"")+row("Telefone da mãe",f.maeFalecida?"":f.maeTel)),
+      section("EJC no Califórnia",
+        row("Fez EJC no Califórnia?",yn(f.fezCalifornia))+
+        (f.fezCalifornia===true?(row("Qual EJC você fez?",f.anoEjc)+rowHTML("Círculo",circuloDot+esc(f.circulo),!!f.circulo)+row("Casal de tio",f.casalTio)):"")+
+        (f.fezCalifornia===false?(row("Qual seu EJC?",f.qualEjc)+row("Quadrante transferido para Califórnia?",f.quadranteTransferido?"Sim":"")):"")+equipesHTML),
+      section("Experiência de serviço",
+        row("Já foi garçom?",yn(f.garcom))+(f.garcom===true?row("Onde?",f.garcomOnde):"")+
+        row("Já foi moita?",yn(f.moita))+(f.moita===true?(row("Quando e onde?",f.moitaOnde)+row("Papel",f.moitaPapel==="Outro"?(f.moitaPapelOutro||"Outro"):f.moitaPapel)):"")+foraHTML),
+      section("Equipe atual do MJC",row("Equipe atual do MJC",f.mjcAtual)),
+      section("Música",row("Músico?",yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
+      section("Saúde e restrições",
+        row("Restrição física",f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica)+
+        row("Restrição alimentar",f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim)+
+        row("Neurodivergências e saúde mental",neuroStr)),
+    ].join("");
+  }
 
   const logo=window.location.origin+"/design_system_unzip/ejc_claude/assets/ejc-logo.png";
   const sub=[person.mjc&&person.mjc!=="—"?"MJC: "+person.mjc:"",person.ejc&&person.ejc!=="—"?person.ejc:"",person.ativo?"Ativo":"Inativo"].filter(Boolean).map(esc).join(" · ");
@@ -1144,7 +1217,7 @@ function exportarFichaPDF(person){
 <body onload="window.focus();window.print();">
   <div class="head">
     <img class="logo" src="${logo}" alt="EJC" onerror="this.style.display='none'">
-    <div><div class="over">EJC Califórnia · BH · Ficha do jovem</div><h1>${esc(person.n)}</h1><div class="sub">${sub}</div></div>
+    <div><div class="over">EJC Califórnia · BH · ${esc(overline)}</div><h1>${esc(person.n)}</h1><div class="sub">${sub}</div></div>
     ${person.foto?`<img class="foto" src="${esc(person.foto)}" alt="" onerror="this.style.display='none'">`:""}
   </div>
   ${corpo}
@@ -1170,7 +1243,7 @@ function PersonDetail({ person, onClose, onEdit }){
         </div>
         <StatusDot active={person.ativo}/>
         <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
-        {onEdit && !isTio && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar</Button>}
+        {onEdit && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar</Button>}
       </div>
     </div>
 
@@ -1217,8 +1290,11 @@ function PersonDetailBody({ person }){
         </p>
       </Section>}
 
-      {/* Ficha completa */}
-      {f && <>
+      {/* Ficha completa dos tios */}
+      {f && isTio && <TioDetailBody f={f}/>}
+
+      {/* Ficha completa do jovem */}
+      {f && !isTio && <>
         <Section title="Dados pessoais" icon="user" color="var(--cat-blue)">
           <div style={rowGrid}>
             <InfoRow label="Nome completo" value={f.nome} full/>
@@ -1251,17 +1327,18 @@ function PersonDetailBody({ person }){
         <Section title="EJC no Califórnia" icon="cross" color="var(--brand-brown)">
           <div style={rowGrid}>
             <InfoRow label="Fez EJC no Califórnia?" value={f.fezCalifornia===true?"Sim":f.fezCalifornia===false?"Não":null}/>
-            {f.fezCalifornia===true && <InfoRow label="Ano que fez" value={f.anoEjc}/>}
+            {f.fezCalifornia===true && <InfoRow label="Qual EJC você fez?" value={f.anoEjc}/>}
             {f.fezCalifornia===false && <InfoRow label="Qual seu EJC?" value={f.qualEjc}/>}
             {f.fezCalifornia===true && f.circulo && <InfoRow label="Círculo" value={<span style={{display:"inline-flex",alignItems:"center",gap:8}}><CirculoDot nome={f.circulo}/>{f.circulo}</span>}/>}
             {f.fezCalifornia===true && <InfoRow label="Casal de tio" value={f.casalTio}/>}
+            {f.fezCalifornia===false && <InfoRow label="Quadrante transferido para Califórnia?" value={f.quadranteTransferido?"Sim":null}/>}
           </div>
           {(f.equipesCalifornia&&f.equipesCalifornia.length>0) && <div style={{marginTop:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Equipes que serviu</div>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>{f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu"}</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {f.equipesCalifornia.map((r,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-                  <Badge tone="brand">{r.ano}</Badge><span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
+                  {r.ano && <Badge tone="brand">{r.ano}</Badge>}<span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
                   {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
                 </div>
               ))}
@@ -1269,7 +1346,7 @@ function PersonDetailBody({ person }){
           </div>}
         </Section>
 
-        <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
+        {(f.garcom!=null||f.moita!=null||(f.serviuFora&&f.serviuFora.length>0)) && <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
           <div style={rowGrid}>
             <InfoRow label="Já foi garçom?" value={f.garcom===true?"Sim":f.garcom===false?"Não":null}/>
             {f.garcom===true && <InfoRow label="Onde?" value={f.garcomOnde}/>}
@@ -1285,7 +1362,7 @@ function PersonDetailBody({ person }){
               {f.serviuFora.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px",fontSize:14}}><Icon name="map-pin" size={15}/>{labelServiuFora(s)}</div>)}
             </div>
           </div>}
-        </Section>
+        </Section>}
 
         {(f.mjcAtual) && <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)">
           <Badge tone="brand">{f.mjcAtual}</Badge>
@@ -1307,6 +1384,66 @@ function PersonDetailBody({ person }){
           </div>
         </Section>
       </>}
+  </>;
+}
+
+// visualização read-only da ficha do casal de tios
+function TioDetailBody({ f }){
+  const neuroStr=(f.neuro||[]).map(x=>x==="Outra"?(f.neuroOutra||"Outra"):x);
+  return <>
+    <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
+      <div style={rowGrid}>
+        <InfoRow label="Nome da tia" value={f.tiaNome}/>
+        <InfoRow label="Nome do tio" value={f.tioNome}/>
+        <InfoRow label="Apelido da tia" value={f.tiaApelido}/>
+        <InfoRow label="Apelido do tio" value={f.tioApelido}/>
+        <InfoRow label="Telefone da tia" value={f.tiaTel} full={false}/>
+        <InfoRow label="Telefone do tio" value={f.tioTel} full={false}/>
+      </div>
+      <div style={{marginTop:10}}>
+        {f.tiaTelPrincipal && <Badge tone="brand">Principal: tia</Badge>}
+        {f.tioTelPrincipal && <Badge tone="brand">Principal: tio</Badge>}
+      </div>
+      <div style={{...rowGrid,marginTop:16}}>
+        <InfoRow label="Instagram da tia" value={f.tiaInsta}/>
+        <InfoRow label="Instagram do tio" value={f.tioInsta}/>
+        <InfoRow label="Data de nascimento da tia" value={f.tiaNasc}/>
+        <InfoRow label="Data de nascimento do tio" value={f.tioNasc}/>
+        <InfoRow label="E-mail da tia" value={f.tiaEmail}/>
+        <InfoRow label="E-mail do tio" value={f.tioEmail}/>
+        <InfoRow label="Tem matrimônio?" value={f.matrimonio===true?"Sim":f.matrimonio===false?"Não":null}/>
+      </div>
+    </Section>
+
+    <Section title="ECC no Califórnia" icon="cross" color="var(--brand-brown)">
+      <div style={rowGrid}>
+        <InfoRow label="Fez ECC no Califórnia?" value={f.fezCalifornia===true?"Sim":f.fezCalifornia===false?"Não":null}/>
+        {f.fezCalifornia===true && <InfoRow label="Qual fez?" value={f.qualFez}/>}
+        {f.fezCalifornia===false && <InfoRow label="Qual seu ECC?" value={f.qualEcc}/>}
+      </div>
+      {((f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[]).length>0 && <div style={{marginTop:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>{f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia"}</div>
+        <ReadChips items={(f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia).map(r=>r.eq)} tone="brand"/>
+      </div>}
+    </Section>
+
+    {f.musico!=null && <Section title="Música" icon="music" color="var(--cat-plum)">
+      <div style={{marginBottom:(f.musico&&f.instrumentos&&f.instrumentos.length)?12:0}}>
+        <InfoRow label="Músico?" value={f.musico?("Sim — "+(f.musicoQuem||"—")):"Não"}/>
+      </div>
+      {f.musico && <ReadChips items={f.instrumentos} tone="brand"/>}
+    </Section>}
+
+    <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)">
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <InfoRow label="Restrição física" value={f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica} full/>
+        <InfoRow label="Restrição alimentar" value={f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim} full/>
+        {neuroStr.length>0 && <div>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Neurodivergências e saúde mental</div>
+          <ReadChips items={neuroStr} tone="danger"/>
+        </div>}
+      </div>
+    </Section>
   </>;
 }
 
@@ -1630,7 +1767,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
         </Field>
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
-          <Field label="Ano que fez EJC" required error={errors.anoEjc}>
+          <Field label="Qual EJC você fez?" required error={errors.anoEjc}>
             <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:errors.anoEjc?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
               <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
             </select>
@@ -1650,48 +1787,17 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           </div>
         </div>}
         {f.fezCalifornia===false && <div style={{marginTop:16}}>
-          <Field label="Qual seu EJC?" hint="Onde você fez seu Encontro">
-            <Input value={f.qualEjc||""} onChange={e=>set("qualEjc",e.target.value)} placeholder="Ex: EJC Padre Eustáquio, 2022"/>
+          <Field label="Qual seu EJC? (Número + nome)" hint="Onde você fez seu Encontro">
+            <Input value={f.qualEjc||""} onChange={e=>set("qualEjc",e.target.value)} placeholder="X EJC Padre Eustáquio"/>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia" hint="Escolha a equipe de cada ano em que serviu — deixe em branco os anos que não serviu.">
-              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={EJC_YEARS}/>
+            <Field label="Equipe que serviu no Califórnia" hint="Adicione a equipe (ou equipes) em que serviu">
+              <RepeatEquipeSimples value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
             </Field>
           </div>
-        </div>}
-      </Section>
-
-      {/* 5. Experiência */}
-      <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
-        <Field label="Já foi garçom?">
-          <YesNo value={f.garcom} onChange={v=>set("garcom",v)}/>
-        </Field>
-        {f.garcom===true && <div style={{marginTop:14}}>
-          <Field label="Onde?"><Input value={f.garcomOnde} onChange={e=>set("garcomOnde",e.target.value)} placeholder="Escreva onde foi garçom"/></Field>
-        </div>}
-        <div style={{marginTop:18}}>
-          <Field label="Já foi moita?">
-            <YesNo value={f.moita} onChange={v=>set("moita",v)}/>
-          </Field>
-        </div>
-        {f.moita===true && <div style={{marginTop:14}}>
-          <Field label="Quando e onde?"><Input value={f.moitaOnde||""} onChange={e=>set("moitaOnde",e.target.value)} placeholder="Ex: IV EJC Salgado Filho"/></Field>
-          <div style={{marginTop:14}}>
-            <Field label="Qual seu papel?">
-              <ChipGroup options={PAPEIS_MOITA} value={f.moitaPapel} onChange={v=>set("moitaPapel",v)}/>
-            </Field>
-          </div>
-          {f.moitaPapel==="Outro" && <div style={{marginTop:14}}>
-            <Field label="Qual?"><Input value={f.moitaPapelOutro||""} onChange={e=>set("moitaPapelOutro",e.target.value)} placeholder="Escreva o papel"/></Field>
-          </div>}
-        </div>}
-        <div style={{marginTop:18}}>
-          <Field label="Já serviu fora?">
-            <YesNo value={f.serviuForaFlag} onChange={v=>set("serviuForaFlag",v)}/>
-          </Field>
-        </div>
-        {f.serviuForaFlag===true && <div style={{marginTop:14}}>
-          <RepeatServiuFora value={f.serviuFora} onChange={v=>set("serviuFora",v)}/>
+          <label style={{display:"inline-flex",alignItems:"center",gap:9,fontSize:14,marginTop:16,cursor:"pointer"}}>
+            <input type="checkbox" checked={!!f.quadranteTransferido} onChange={e=>set("quadranteTransferido",e.target.checked)}/> Quadrante transferido para Califórnia
+          </label>
         </div>}
       </Section>
 
@@ -1741,6 +1847,171 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={handleSave} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":(saveLabel||"Salvar ficha")}</Button>
       </div>
+    </div>
+  </div>;
+}
+
+/* ======================================================================
+   FICHA DOS TIOS — formulário do casal
+   ====================================================================== */
+function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
+  const [f,setF]=useState({
+    tiaTelPrincipal:false, tioTelPrincipal:false,
+    matrimonio:null, fezCalifornia:null, equipesEjc:[], equipesCalifornia:[],
+    musico:null, musicoQuem:"", instrumentos:[],
+    restrFisica:"", restrFisicaOutra:"", restrAlim:"", restrAlimOutra:"", neuro:[], neuroOutra:"",
+    ...(initial||{}),
+  });
+  const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
+  const [errors,setErrors]=useState({});
+  const [busy,setBusy]=useState(false);
+  useLucide();
+
+  const handleSave=async ()=>{
+    const errs={};
+    if(!f.tiaNome||!f.tiaNome.trim()) errs.tiaNome="Informe o nome da tia.";
+    if(!f.tioNome||!f.tioNome.trim()) errs.tioNome="Informe o nome do tio.";
+    if(f.tiaTel && !validaTelefone(f.tiaTel)) errs.tiaTel="Telefone inválido.";
+    if(f.tioTel && !validaTelefone(f.tioTel)) errs.tioTel="Telefone inválido.";
+    if(f.tiaEmail && !validaEmail(f.tiaEmail)) errs.tiaEmail="E-mail inválido.";
+    if(f.tioEmail && !validaEmail(f.tioEmail)) errs.tioEmail="E-mail inválido.";
+    if(f.tiaNasc && !validaData(f.tiaNasc)) errs.tiaNasc="Data inválida — use DD/MM/AAAA.";
+    if(f.tioNasc && !validaData(f.tioNasc)) errs.tioNasc="Data inválida — use DD/MM/AAAA.";
+    setErrors(errs);
+    if(Object.keys(errs).length){
+      setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
+      return;
+    }
+    setBusy(true);
+    await (onSave&&onSave(f));
+    setBusy(false);
+  };
+
+  const setPrincipal=(quem)=>{
+    if(quem==="tia") setF(s=>({...s,tiaTelPrincipal:true,tioTelPrincipal:false}));
+    else setF(s=>({...s,tiaTelPrincipal:false,tioTelPrincipal:true}));
+  };
+
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+    <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
+      <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
+        <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
+        <div style={{marginRight:"auto",minWidth:0,flex:"1 1 140px"}}>
+          <div className="mono-overline">{overline||"NOVA FICHA · TIOS"}</div>
+          <h1 style={{margin:"2px 0 0",fontSize:20,fontWeight:800,letterSpacing:"-.02em",overflowWrap:"anywhere"}}>{title||"Ficha dos tios"}</h1>
+        </div>
+        <Button variant="ghost" className="hide-mobile" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" iconLeft={<Icon name="check" size={16}/>} onClick={handleSave} disabled={busy} style={{opacity:busy?.7:1}}>{busy?"Salvando...":(saveLabel||"Salvar ficha")}</Button>
+      </div>
+    </div>
+
+    <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
+
+      <Card style={{marginBottom:18}}>
+        <PhotoUpload value={f.foto} name={(f.tiaNome||"")+" "+(f.tioNome||"")} onChange={url=>set("foto",url)}/>
+      </Card>
+
+      {/* 1. Tia e Tio */}
+      <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
+        <div style={grid2}>
+          <Field label="Nome da tia" required error={errors.tiaNome}><Input value={f.tiaNome||""} onChange={e=>set("tiaNome",e.target.value)} error={!!errors.tiaNome} placeholder="Nome completo"/></Field>
+          <Field label="Nome do tio" required error={errors.tioNome}><Input value={f.tioNome||""} onChange={e=>set("tioNome",e.target.value)} error={!!errors.tioNome} placeholder="Nome completo"/></Field>
+          <Field label="Apelido da tia"><Input value={f.tiaApelido||""} onChange={e=>set("tiaApelido",e.target.value)} placeholder="Como chamam a tia"/></Field>
+          <Field label="Apelido do tio"><Input value={f.tioApelido||""} onChange={e=>set("tioApelido",e.target.value)} placeholder="Como chamam o tio"/></Field>
+        </div>
+
+        <div style={{...grid2,marginTop:2}}>
+          <Field label="Telefone da tia" error={errors.tiaTel}><Input value={f.tiaTel||""} onChange={e=>set("tiaTel",maskTelefone(e.target.value))} error={!!errors.tiaTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+          <Field label="Telefone do tio" error={errors.tioTel}><Input value={f.tioTel||""} onChange={e=>set("tioTel",maskTelefone(e.target.value))} error={!!errors.tioTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+        </div>
+        <div style={{display:"flex",gap:20,flexWrap:"wrap",marginTop:4,marginBottom:16}}>
+          <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
+            <input type="radio" name="telPrincipal" checked={!!f.tiaTelPrincipal} onChange={()=>setPrincipal("tia")}/> Telefone principal para contato (tia)
+          </label>
+          <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
+            <input type="radio" name="telPrincipal" checked={!!f.tioTelPrincipal} onChange={()=>setPrincipal("tio")}/> Telefone principal para contato (tio)
+          </label>
+        </div>
+
+        <div style={grid2}>
+          <Field label="Instagram da tia"><Input value={f.tiaInsta||""} onChange={e=>set("tiaInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
+          <Field label="Instagram do tio"><Input value={f.tioInsta||""} onChange={e=>set("tioInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
+          <Field label="Data de nascimento da tia" error={errors.tiaNasc}><Input value={f.tiaNasc||""} onChange={e=>set("tiaNasc",maskData(e.target.value))} error={!!errors.tiaNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+          <Field label="Data de nascimento do tio" error={errors.tioNasc}><Input value={f.tioNasc||""} onChange={e=>set("tioNasc",maskData(e.target.value))} error={!!errors.tioNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+          <Field label="E-mail da tia" error={errors.tiaEmail}><Input type="email" value={f.tiaEmail||""} onChange={e=>set("tiaEmail",e.target.value)} error={!!errors.tiaEmail} placeholder="tia@email.com"/></Field>
+          <Field label="E-mail do tio" error={errors.tioEmail}><Input type="email" value={f.tioEmail||""} onChange={e=>set("tioEmail",e.target.value)} error={!!errors.tioEmail} placeholder="tio@email.com"/></Field>
+        </div>
+
+        <div style={{marginTop:4}}>
+          <Field label="Tem matrimônio?"><YesNo value={f.matrimonio} onChange={v=>set("matrimonio",v)}/></Field>
+        </div>
+      </Section>
+
+      {/* 2. ECC no Califórnia */}
+      <Section title="ECC no Califórnia" icon="cross" color="var(--brand-brown)">
+        <Field label="Fez ECC no Califórnia?">
+          <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
+        </Field>
+        {f.fezCalifornia===true && <div style={{marginTop:16}}>
+          <Field label="Qual fez?">
+            <select value={f.qualFez||""} onChange={e=>{ set("qualFez",e.target.value); set("equipesEjc",[]); }} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+              <option value="">Selecione...</option>{ECC_LIST.map(y=><option key={y}>{y}</option>)}
+            </select>
+          </Field>
+          <div style={{marginTop:16}}>
+            <Field label="Equipes que serviu no EJC" hint={f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":"")):"Selecione o ECC primeiro"}>
+              <RepeatEquipeSimples value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0}/>
+            </Field>
+          </div>
+        </div>}
+        {f.fezCalifornia===false && <div style={{marginTop:16}}>
+          <Field label="Qual seu ECC? (Número + Nome)"><Input value={f.qualEcc||""} onChange={e=>set("qualEcc",e.target.value)} placeholder="Ex: XV ECC Nossa Senhora de Fátima"/></Field>
+          <div style={{marginTop:16}}>
+            <Field label="Equipes que serviu no Califórnia" hint="Até 2 equipes">
+              <RepeatEquipeSimples value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2}/>
+            </Field>
+          </div>
+        </div>}
+      </Section>
+
+      {/* 3. Música */}
+      <Section title="Música" icon="music" color="var(--cat-plum)">
+        <Field label="Algum dos dois é músico?"><YesNo value={f.musico} onChange={v=>set("musico",v)}/></Field>
+        {f.musico===true && <div style={{marginTop:14}}>
+          <Field label="Quem?"><ChipGroup options={["Tia","Tio","Ambos"]} value={f.musicoQuem} onChange={v=>set("musicoQuem",v)}/></Field>
+          <div style={{marginTop:14}}>
+            <Field label="O que toca ou canta?" hint="Pode marcar mais de uma opção">
+              <ChipGroup multi options={INSTRUMENTOS} value={f.instrumentos} onChange={v=>set("instrumentos",v)}/>
+            </Field>
+          </div>
+        </div>}
+      </Section>
+
+      {/* 4. Saúde e restrições */}
+      <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar do casal no encontro">
+        <Field label="Restrição física">
+          <ChipGroup options={RESTR_FISICA} value={f.restrFisica} onChange={v=>set("restrFisica",v)}/>
+        </Field>
+        {f.restrFisica==="Outra" && <div style={{marginTop:12}}>
+          <Input value={f.restrFisicaOutra||""} onChange={e=>set("restrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
+        </div>}
+        <div style={{marginTop:18}}>
+          <Field label="Restrição ou preferência alimentar">
+            <ChipGroup options={RESTR_ALIM} value={f.restrAlim} onChange={v=>set("restrAlim",v)}/>
+          </Field>
+          {f.restrAlim==="Outra" && <div style={{marginTop:12}}>
+            <Input value={f.restrAlimOutra||""} onChange={e=>set("restrAlimOutra",e.target.value)} placeholder="Descreva a restrição"/>
+          </div>}
+        </div>
+        <div style={{marginTop:18}}>
+          <Field label="Neurodivergências e saúde mental" hint="Pode marcar mais de uma opção">
+            <ChipGroup multi options={NEURO} value={f.neuro} onChange={v=>set("neuro",v)}/>
+          </Field>
+          {(f.neuro||[]).includes("Outra") && <div style={{marginTop:12}}>
+            <Input value={f.neuroOutra||""} onChange={e=>set("neuroOutra",e.target.value)} placeholder="Descreva"/>
+          </div>}
+        </div>
+      </Section>
     </div>
   </div>;
 }
@@ -1816,6 +2087,34 @@ function RepeatServiuFora({ value, onChange }){
       </div>
       <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={add}>Adicionar</Button>
     </div>
+  </div>;
+}
+
+// lista simples de equipes (sem ano) — usada no "não fez Califórnia" do jovem e nas duas
+// listas de equipe dos tios. `max` limita quantas entradas podem ser adicionadas.
+function RepeatEquipeSimples({ value, onChange, max }){
+  const [eq,setEq]=useState("");
+  const list=value||[];
+  const add=()=>{ if(!eq) return; onChange([...list,{eq}]); setEq(""); };
+  const podeAdd = max==null || list.length<max;
+  const selStyle={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:170};
+  return <div>
+    {list.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+      {list.map((r,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+          <span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
+          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(list.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+        </div>
+      ))}
+    </div>}
+    {podeAdd
+      ? <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
+            <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+          </select>
+          <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
+        </div>
+      : <p style={{fontSize:12,color:"var(--text-3)"}}>Máximo de {max} equipe{max>1?"s":""} atingido.</p>}
   </div>;
 }
 
@@ -2292,6 +2591,31 @@ function Configuracoes({ user }){
   </div>;
 }
 
+// escolha do tipo de cadastro antes de abrir a ficha certa
+function TipoCadastroModal({ onClose, onChoose }){
+  useLucide();
+  const opt=(icon,titulo,desc,onClick)=>(
+    <button onClick={onClick} style={{display:"flex",alignItems:"center",gap:14,width:"100%",textAlign:"left",border:"none",cursor:"pointer",background:"var(--surface-2)",borderRadius:"var(--r-lg)",padding:"18px 20px"}}>
+      <span style={{width:46,height:46,borderRadius:99,background:"var(--brand-brown)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={icon} size={21}/></span>
+      <div style={{flex:1}}><div style={{fontWeight:800,fontSize:16}}>{titulo}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>{desc}</div></div>
+      <Icon name="chevron-right" size={18}/>
+    </button>
+  );
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:460,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+      <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Novo cadastro</h3>
+      <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Quem você está cadastrando?</p>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {opt("user","Sou Jovem","Ficha individual do jovem",()=>onChoose("jovem"))}
+        {opt("heart-handshake","Sou casal de tios","Ficha do casal de tios",()=>onChoose("tios"))}
+      </div>
+      <div style={{marginTop:18,textAlign:"right"}}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+      </div>
+    </div>
+  </div>;
+}
+
 /* ======================================================================
    SHELL
    ====================================================================== */
@@ -2307,39 +2631,48 @@ const NAV=[
 // e-mails com acesso à aba Configurações (senhas + dirigentes) — exclusivo do admin dono
 const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
 function App({ user, onLogout }){
-  const { addJovem, updateJovem } = useStore();
+  const { addJovem, updateJovem, addTio, updateTio } = useStore();
   // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
   const isOwner = user && SUPER_ADMINS.includes((user.email||"").trim().toLowerCase());
   const nav = isOwner ? [...NAV, {id:"config",label:"Configurações",icon:"settings"}] : NAV;
   const [view,setView]=useState("inicio");
-  const [cadOpen,setCadOpen]=useState(false);
+  const [chooserOpen,setChooserOpen]=useState(false); // "Sou Jovem" / "Sou casal de tios"
+  const [cadKind,setCadKind]=useState(null); // "jovem" | "tios" — form de novo cadastro aberto
   const [senhaOpen,setSenhaOpen]=useState(false);
   useLucide();
   const isMobile=useIsMobile();
   const [person,setPerson]=useState(null);
   const [editPerson,setEditPerson]=useState(null);
   const [teamFilter,setTeamFilter]=useState(null);
-  const openCad=()=>setCadOpen(true);
+  const openCadChooser=()=>setChooserOpen(true); // Início: pergunta o tipo antes
+  const openCadJovem=()=>setCadKind("jovem"); // tela Jovens: já sabe o tipo
+  const openCadTios=()=>setCadKind("tios"); // tela Tios: já sabe o tipo
   const openPerson=p=>setPerson(p);
   const openTeam=t=>{ setTeamFilter(t); setView("jovens"); };
   const clearTeam=()=>setTeamFilter(null);
   const go=id=>{ setTeamFilter(null); setView(id); };
-  const saveFicha=async f=>{ await addJovem(formToJovem(f)); setCadOpen(false); setTeamFilter(null); setView("jovens"); };
+  const saveFicha=async f=>{ await addJovem(formToJovem(f)); setCadKind(null); setTeamFilter(null); setView("jovens"); };
+  const saveTios=async f=>{ await addTio(formToTio(f)); setCadKind(null); setTeamFilter(null); setView("tios"); };
   let screen;
-  if(view==="jovens") screen=<Jovens onNovo={openCad} onOpenPerson={openPerson} teamFilter={teamFilter} onClearTeam={clearTeam}/>;
-  else if(view==="tios") screen=<Tios onNovo={openCad} onOpenPerson={openPerson}/>;
+  if(view==="jovens") screen=<Jovens onNovo={openCadJovem} onOpenPerson={openPerson} teamFilter={teamFilter} onClearTeam={clearTeam}/>;
+  else if(view==="tios") screen=<Tios onNovo={openCadTios} onOpenPerson={openPerson}/>;
   else if(view==="montagem") screen=<Montagem/>;
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
   else if(view==="config" && isOwner) screen=<Configuracoes user={user}/>;
-  else screen=<Inicio onNovo={openCad} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
+  else screen=<Inicio onNovo={openCadChooser} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
 
-  const editarSalvar=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
+  const editIsTio = editPerson && editPerson.mjc===undefined;
+  const editarSalvarJovem=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
+  const editarSalvarTio=async f=>{ await updateTio(editPerson.id, fichaToTioFields(f)); setEditPerson(null); };
   const overlays = <>
-    {cadOpen && <FichaForm onClose={()=>setCadOpen(false)} onSave={saveFicha}/>}
+    {chooserOpen && <TipoCadastroModal onClose={()=>setChooserOpen(false)} onChoose={k=>{ setChooserOpen(false); setCadKind(k); }}/>}
+    {cadKind==="jovem" && <FichaForm onClose={()=>setCadKind(null)} onSave={saveFicha}/>}
+    {cadKind==="tios" && <TiosForm onClose={()=>setCadKind(null)} onSave={saveTios}/>}
     {person && <PersonDetail person={person} onClose={()=>setPerson(null)} onEdit={()=>{ setEditPerson(person); setPerson(null); }}/>}
-    {editPerson && <FichaForm initial={editPerson.ficha||{}} selfId={editPerson.id} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvar}/>}
+    {editPerson && !editIsTio && <FichaForm initial={editPerson.ficha||{}} selfId={editPerson.id} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvarJovem}/>}
+    {editPerson && editIsTio && <TiosForm initial={editPerson.ficha||{}} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvarTio}/>}
     {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
   </>;
 
