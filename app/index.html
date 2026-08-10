@@ -122,7 +122,7 @@ function toRoman(num){
   let s=""; for(const [v,r] of vals){ while(num>=v){ s+=r; num-=v; } } return s;
 }
 // XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX)
-const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
+const ECC_LIST=(()=>{ const a=[]; for(let n=31;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
 // regra dos tios: XXIX → só 1 equipe; XXVIII → só 2; o restante → até 3 (2 padrão + opção de +1)
 function maxEquipesEcc(qualFez){
   const idx=ECC_LIST.indexOf(qualFez);
@@ -2174,8 +2174,9 @@ function RepeatEquipeSimples({ value, onChange, max }){
 function RepeatEquipeEcc({ value, onChange, max, eccOptions }){
   const [ejc,setEjc]=useState("");
   const [eq,setEq]=useState("");
+  const [coordNovo,setCoordNovo]=useState(false);
   const list=value||[];
-  const add=()=>{ if(!ejc||!eq) return; onChange([...list,{ejc,eq,coord:false}]); setEjc("");setEq(""); };
+  const add=()=>{ if(!ejc||!eq) return; onChange([...list,{ejc,eq,coord:coordNovo}]); setEjc("");setEq("");setCoordNovo(false); };
   const setCoord=(i,coord)=>onChange(list.map((r,j)=>j===i?{...r,coord}:r));
   const podeAdd = max==null || list.length<max;
   const selStyle={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",flex:"1 1 150px",minWidth:130};
@@ -2200,6 +2201,9 @@ function RepeatEquipeEcc({ value, onChange, max, eccOptions }){
           <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
             <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
           </select>
+          <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text-2)",cursor:"pointer",flex:"0 0 auto"}}>
+            <input type="checkbox" checked={coordNovo} onChange={e=>setCoordNovo(e.target.checked)}/> Coordenação
+          </label>
           <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
         </div>
       : <p style={{fontSize:12,color:"var(--text-3)"}}>Máximo de {max} equipe{max>1?"s":""} atingido.</p>}
