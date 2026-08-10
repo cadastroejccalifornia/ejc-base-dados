@@ -2569,12 +2569,14 @@ function NovoDirigenteModal({ onClose, onCreate, initial }){
   </div>;
 }
 
-function Dirigentes({ user, embedded }){
-  const { dirigentes, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
+function Dirigentes({ user, embedded, onEditPerson }){
+  const { dirigentes, jovens, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
   const [modal,setModal]=useState(false);
   const [editando,setEditando]=useState(null); // convite pendente sendo corrigido
   const [confirmar,setConfirmar]=useState(null); // dirigente a remover
   const confirmados = dirigentes.filter(d=>d.user_id).length;
+  // acha a própria ficha do dirigente (mesmo cadastro que ele preencheu como jovem) pra puxar a foto e editar
+  const fichaDoDirigente = d => d.user_id ? jovens.find(j=>j.user_id===d.user_id) : null;
   const inviteBtn=<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Convidar dirigente</Button>;
   return <div>
     {embedded
@@ -2593,8 +2595,11 @@ function Dirigentes({ user, embedded }){
         const pendente = !d.user_id;
         const isSelf = d.user_id===user.id || (d.email||"").toLowerCase()===(user.email||"").toLowerCase();
         const last = !pendente && confirmados<=1;
+        const minhaFicha = fichaDoDirigente(d);
         return <div key={d.id} style={{display:"flex",alignItems:"center",gap:14,rowGap:8,flexWrap:"wrap",padding:"14px 18px",borderBottom:i<dirigentes.length-1?"1px solid var(--hairline)":"none"}}>
-          <span style={{width:44,height:44,borderRadius:99,background:pendente?"var(--surface-3)":(d.cargo?cargoColor(d.cargo):"var(--brand-brown)"),color:pendente?"var(--text-2)":"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={pendente?"mail-clock":(d.cargo?cargoIcon(d.cargo):"shield-check")} size={20}/></span>
+          {minhaFicha
+            ? <Avatar src={minhaFicha.foto} name={d.nome} size={44}/>
+            : <span style={{width:44,height:44,borderRadius:99,background:pendente?"var(--surface-3)":(d.cargo?cargoColor(d.cargo):"var(--brand-brown)"),color:pendente?"var(--text-2)":"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}><Icon name={pendente?"mail-clock":(d.cargo?cargoIcon(d.cargo):"shield-check")} size={20}/></span>}
           <div style={{flex:"1 1 200px",minWidth:0}}>
             <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{d.nome}{isSelf && <Badge tone="brand">Você</Badge>}{pendente && <Badge tone="warning" dot>Convite pendente</Badge>}</div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginTop:3,flexWrap:"wrap"}}>
@@ -2603,6 +2608,7 @@ function Dirigentes({ user, embedded }){
             </div>
           </div>
           <div style={{display:"flex",gap:4,flex:"0 0 auto",marginLeft:"auto"}}>
+            {isSelf && minhaFicha && onEditPerson && <Button variant="ghost" iconLeft={<Icon name="pencil" size={15}/>} onClick={()=>onEditPerson(minhaFicha)} title="Editar meu cadastro">Meu cadastro</Button>}
             {pendente && <Button variant="ghost" iconLeft={<Icon name="pencil" size={15}/>} onClick={()=>setEditando(d)} title="Corrigir nome/e-mail/função e reenviar o convite">Editar</Button>}
             <Button variant="ghost" iconLeft={<Icon name="trash-2" size={15}/>}
               onClick={()=>setConfirmar(d)}
@@ -2678,12 +2684,12 @@ function RedefinirSenhaCard(){
   </Card>;
 }
 
-function Configuracoes({ user }){
+function Configuracoes({ user, onEditPerson }){
   useLucide();
   return <div>
     <Header title="Configurações" sub="Área restrita da Coordenação Geral"/>
     <RedefinirSenhaCard/>
-    <Dirigentes user={user} embedded/>
+    <Dirigentes user={user} embedded onEditPerson={onEditPerson}/>
   </div>;
 }
 
@@ -2794,7 +2800,7 @@ function App({ user, onLogout }){
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
-  else if(view==="config" && isOwner) screen=<Configuracoes user={user}/>;
+  else if(view==="config" && isOwner) screen=<Configuracoes user={user} onEditPerson={p=>setEditPerson(p)}/>;
   else screen=<Inicio onNovo={openCadChooser} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
 
   const editIsTio = editPerson && editPerson.mjc===undefined;
