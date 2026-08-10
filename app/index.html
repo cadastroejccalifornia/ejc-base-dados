@@ -843,7 +843,8 @@ function AddPersonCell({ pool, onPick }){
     {q && <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:"var(--surface)",borderRadius:"var(--r-md)",boxShadow:"var(--shadow-md)",zIndex:20,overflow:"hidden"}}>
       {results.length?results.map((p,i)=>(
         <div key={i} onMouseDown={()=>onPick(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          <Avatar src={p.foto} name={p.n} size={30}/><span style={{fontSize:13,fontWeight:600}}>{p.n}</span>
+          <Avatar src={p.foto} name={p.n} size={30}/><span style={{fontSize:13,fontWeight:600,flex:1}}>{p.n}</span>
+          {p.mjc===undefined && <Tag color="var(--cat-terracotta)">Tios</Tag>}
         </div>
       )):<div style={{padding:"12px",fontSize:13,color:"var(--text-3)"}}>Ninguém encontrado.</div>}
     </div>}
@@ -949,12 +950,13 @@ function ExportarModal({ montagem, tabAtual, onClose }){
 }
 
 function MontagemSheet({ montagem, onBack }){
-  const { jovens, setMontagemCell } = useStore();
+  const { jovens, tios, setMontagemCell } = useStore();
   const [tab,setTab]=useState(MONTAGEM_TABS[0]);
   const [exportOpen,setExportOpen]=useState(false);
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
   const teamData=(montagem.cells&&montagem.cells[tab])||{};
-  const pool=jovens; // pool de busca (jovens)
+  // pool de busca: jovens + casais de tios — um casal de tios ocupa uma linha só (já é uma "pessoa" na planilha)
+  const pool=[...jovens, ...tios];
   const sections=estruturaDaEquipe(tab);
 
   // equipes (abas) em que a pessoa já está, exceto a aba atual — pra avisar de duplicidade
