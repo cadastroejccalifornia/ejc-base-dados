@@ -121,8 +121,12 @@ function toRoman(num){
   const vals=[[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
   let s=""; for(const [v,r] of vals){ while(num>=v){ s+=r; num-=v; } } return s;
 }
-// XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX)
-const ECC_LIST=(()=>{ const a=[]; for(let n=31;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
+// XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX) — ECC é o encontro dos tios,
+// numeração própria e diferente do EJC (por isso não vai até XXXI como o EJC_YEARS)
+const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
+// XXXI EJC, XXX EJC, ... até I EJC — usado só na lista de "equipes que serviu" dos tios
+// (eles podem ter servido em edições do EJC, que vai até XXXI, mesmo o ECC deles sendo outra numeração)
+const EJC_LIST_SIMPLES=(()=>{ const a=[]; for(let n=31;n>=1;n--) a.push(toRoman(n)+" EJC"); return a; })();
 // regra dos tios: XXIX → só 1 equipe; XXVIII → só 2; o restante → até 3 (2 padrão + opção de +1)
 function maxEquipesEcc(qualFez){
   const idx=ECC_LIST.indexOf(qualFez);
@@ -1987,7 +1991,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no EJC" hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
-              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={ECC_LIST}/>
+              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={EJC_LIST_SIMPLES}/>
             </Field>
           </div>
         </div>}
@@ -1995,7 +1999,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           <Field label="Qual seu ECC? (Número + Nome)"><Input value={f.qualEcc||""} onChange={e=>set("qualEcc",e.target.value)} placeholder="Ex: XV ECC Nossa Senhora de Fátima"/></Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no Califórnia" hint="Até 2 equipes — EJC, equipe e se foi coordenação">
-              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={ECC_LIST}/>
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={EJC_LIST_SIMPLES}/>
             </Field>
           </div>
         </div>}
