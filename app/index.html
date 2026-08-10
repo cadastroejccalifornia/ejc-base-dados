@@ -2713,7 +2713,8 @@ function TipoCadastroModal({ onClose, onChoose }){
 }
 
 // avatar do rail: clicar abre um menu com Configurações/Alterar senha/Sair (limpa a barra lateral)
-function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout }){
+// menu do avatar — `align` controla de que lado o popover se ancora, pra nunca vazar da tela
+function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout, align="left", drop="up" }){
   const [open,setOpen]=useState(false);
   const ref=useRef(null);
   useLucide();
@@ -2729,11 +2730,18 @@ function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout }){
       <Icon name={icon} size={17}/>{label}
     </button>
   );
-  return <div ref={ref} style={{position:"relative"}}>
+  const popStyle={
+    position:"absolute",
+    [drop==="up"?"bottom":"top"]:"calc(100% + 8px)",
+    [align==="left"?"left":"right"]:0,
+    width:"max-content",minWidth:200,maxWidth:"min(240px, calc(100vw - 24px))",
+    background:"var(--surface)",borderRadius:"var(--r-lg)",boxShadow:"var(--shadow-lg)",padding:8,zIndex:60,
+  };
+  return <div ref={ref} style={{position:"relative",display:"inline-flex"}}>
     <button onClick={()=>setOpen(o=>!o)} title="Menu" style={{border:"none",background:"transparent",cursor:"pointer",padding:0,borderRadius:"50%"}}>
       <Avatar name={user?user.nome||"Admin":"Você"} size={44} title={user?user.email:""}/>
     </button>
-    {open && <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",width:210,background:"var(--surface)",borderRadius:"var(--r-lg)",boxShadow:"var(--shadow-lg)",padding:8,zIndex:50}}>
+    {open && <div style={popStyle}>
       {user&&user.email && <div style={{padding:"8px 12px 10px",fontSize:12,color:"var(--text-3)",borderBottom:"1px solid var(--hairline)",marginBottom:6,overflowWrap:"anywhere"}}>{user.email}</div>}
       {isOwner && item("settings","Configurações",onOpenConfig)}
       {item("key-round","Alterar senha",onOpenSenha)}
@@ -2759,9 +2767,8 @@ const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
 function App({ user, onLogout }){
   const { addJovem, updateJovem, addTio, updateTio } = useStore();
   // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
+  // Fica sempre dentro do menu do avatar (RailAvatarMenu), tanto no celular quanto no desktop
   const isOwner = user && SUPER_ADMINS.includes((user.email||"").trim().toLowerCase());
-  // no celular "Configurações" fica na barra inferior; no desktop fica dentro do menu do avatar
-  const nav = isOwner ? [...NAV, {id:"config",label:"Configurações",icon:"settings"}] : NAV;
   const [view,setView]=useState("inicio");
   const [chooserOpen,setChooserOpen]=useState(false); // "Sou Jovem" / "Sou casal de tios"
   const [cadKind,setCadKind]=useState(null); // "jovem" | "tios" — form de novo cadastro aberto
@@ -2804,16 +2811,20 @@ function App({ user, onLogout }){
   </>;
 
   if(isMobile){
-    const items=[...nav, {id:"__senha",label:"Senha",icon:"key-round"}, {id:"__logout",label:"Sair",icon:"log-out"}];
     return (
       <div style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         <main style={{flex:1,minWidth:0,background:"var(--surface-2)",padding:"18px 16px 84px"}}>{screen}</main>
-        <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"var(--surface)",boxShadow:"0 -6px 20px rgba(74,46,26,.12)",display:"flex",alignItems:"center",gap:2,padding:"8px 6px",overflowX:"auto",zIndex:40}}>
-          {items.map(it=>{const on=it.id===view;
-            return <button key={it.id} title={it.label} onClick={()=> it.id==="__logout" ? onLogout() : it.id==="__senha" ? setSenhaOpen(true) : go(it.id)} style={{flex:"0 0 auto",minWidth:60,border:"none",cursor:"pointer",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",color:on?"var(--brand-brown)":"var(--text-2)"}}>
-              <span style={{width:38,height:32,borderRadius:99,display:"inline-flex",alignItems:"center",justifyContent:"center",background:on?"var(--brand-brown-soft)":"transparent"}}><Icon name={it.icon} size={19}/></span>
-              <span style={{fontSize:10,fontWeight:on?700:500,whiteSpace:"nowrap"}}>{it.label}</span>
-            </button>;})}
+        <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"var(--surface)",boxShadow:"0 -6px 20px rgba(74,46,26,.12)",display:"flex",alignItems:"center",gap:4,padding:"8px 6px",zIndex:40}}>
+          <div style={{display:"flex",alignItems:"center",gap:2,overflowX:"auto",flex:1,minWidth:0}}>
+            {NAV.map(it=>{const on=it.id===view;
+              return <button key={it.id} title={it.label} onClick={()=>go(it.id)} style={{flex:"0 0 auto",minWidth:60,border:"none",cursor:"pointer",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",color:on?"var(--brand-brown)":"var(--text-2)"}}>
+                <span style={{width:38,height:32,borderRadius:99,display:"inline-flex",alignItems:"center",justifyContent:"center",background:on?"var(--brand-brown-soft)":"transparent"}}><Icon name={it.icon} size={19}/></span>
+                <span style={{fontSize:10,fontWeight:on?700:500,whiteSpace:"nowrap"}}>{it.label}</span>
+              </button>;})}
+          </div>
+          <div style={{flex:"0 0 auto",paddingLeft:4,borderLeft:"1px solid var(--hairline)"}}>
+            <RailAvatarMenu user={user} isOwner={isOwner} onOpenConfig={()=>go("config")} onOpenSenha={()=>setSenhaOpen(true)} onLogout={onLogout} align="right" drop="up"/>
+          </div>
         </nav>
         {overlays}
       </div>
