@@ -1534,6 +1534,19 @@ function maskInstagram(v){
 function toNomeProprio(v){
   return (v||"").trim().replace(/\s+/g," ").toLowerCase().replace(/(^|[\s-])([a-zà-öø-ÿ])/g,(m,sep,ch)=>sep+ch.toUpperCase());
 }
+// padroniza endereço/bairro/cidade: primeira letra maiúscula em cada palavra, MAS conectivos
+// (de/da/do/dos/das/e) ficam minúsculos quando não são a primeira palavra — ex: "Rua das Flores"
+const CONECTIVOS_ENDERECO=new Set(["de","da","do","dos","das","e"]);
+function toEnderecoProprio(v){
+  const s=(v||"").trim().replace(/\s+/g," ");
+  if(!s) return "";
+  return s.split(" ").map((palavra,i)=>{
+    const minusc=palavra.toLowerCase();
+    const nucleo=minusc.replace(/[^a-zà-öø-ÿ]/g,"");
+    if(i>0 && CONECTIVOS_ENDERECO.has(nucleo)) return minusc;
+    return minusc.replace(/[a-zà-öø-ÿ]/,c=>c.toUpperCase());
+  }).join(" ");
+}
 // data em formato BR: DD/MM/AAAA
 function maskData(v){
   const d=onlyDigits(v).slice(0,8);
@@ -1716,7 +1729,8 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     if(busy) return;
     setBusy(true);
     // padroniza a caixa dos nomes (Primeira Maiúscula) antes de salvar, mesmo se digitado em CAIXA ALTA
-    const fPadronizado={...f, nome:toNomeProprio(f.nome), apelido:toNomeProprio(f.apelido), paiNome:toNomeProprio(f.paiNome), maeNome:toNomeProprio(f.maeNome), casalTio:toNomeProprio(f.casalTio)};
+    const fPadronizado={...f, nome:toNomeProprio(f.nome), apelido:toNomeProprio(f.apelido), paiNome:toNomeProprio(f.paiNome), maeNome:toNomeProprio(f.maeNome), casalTio:toNomeProprio(f.casalTio),
+      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade)};
     await (onSave&&onSave(fPadronizado));
     setBusy(false);
   };
@@ -1932,7 +1946,8 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
       return;
     }
     setBusy(true);
-    const fPadronizado={...f, tiaNome:toNomeProprio(f.tiaNome), tioNome:toNomeProprio(f.tioNome), tiaApelido:toNomeProprio(f.tiaApelido), tioApelido:toNomeProprio(f.tioApelido)};
+    const fPadronizado={...f, tiaNome:toNomeProprio(f.tiaNome), tioNome:toNomeProprio(f.tioNome), tiaApelido:toNomeProprio(f.tiaApelido), tioApelido:toNomeProprio(f.tioApelido),
+      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade)};
     await (onSave&&onSave(fPadronizado));
     setBusy(false);
   };
