@@ -1140,8 +1140,8 @@ function exportarFichaPDF(person){
   if(isTio){
     overline="Ficha dos tios";
     const equipesTio = f.fezCalifornia===true ? f.equipesEjc : f.equipesCalifornia;
-    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",(equipesTio||[]).map(r=>esc(r.eq)).join("<br>"),true):"";
-    const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
+    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",(equipesTio||[]).map(r=>esc((r.ejc?r.ejc+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
+    const neuroPessoa=pref=>(f[pref+"Neuro"]||[]).map(n=>n==="Outra"?(f[pref+"NeuroOutra"]||"Outra"):n).join(", ");
     corpo=[
       section("Tia e Tio",
         row("Nome da tia",f.tiaNome)+row("Nome do tio",f.tioNome)+
@@ -1156,10 +1156,14 @@ function exportarFichaPDF(person){
         (f.fezCalifornia===true?row("Qual fez?",f.qualFez):"")+
         (f.fezCalifornia===false?row("Qual seu ECC?",f.qualEcc):"")+equipesTioHTML),
       section("Música",row("Músico?",f.musico?("Sim — "+(f.musicoQuem||"—")):yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
-      section("Saúde e restrições",
-        row("Restrição física",f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica)+
-        row("Restrição alimentar",f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim)+
-        row("Neurodivergências e saúde mental",neuroStr)),
+      section("Saúde e restrições da tia",
+        row("Restrição física",f.tiaRestrFisica==="Outra"?(f.tiaRestrFisicaOutra||"Outra"):f.tiaRestrFisica)+
+        row("Restrição alimentar",f.tiaRestrAlim==="Outra"?(f.tiaRestrAlimOutra||"Outra"):f.tiaRestrAlim)+
+        row("Neurodivergências e saúde mental",neuroPessoa("tia"))),
+      section("Saúde e restrições do tio",
+        row("Restrição física",f.tioRestrFisica==="Outra"?(f.tioRestrFisicaOutra||"Outra"):f.tioRestrFisica)+
+        row("Restrição alimentar",f.tioRestrAlim==="Outra"?(f.tioRestrAlimOutra||"Outra"):f.tioRestrAlim)+
+        row("Neurodivergências e saúde mental",neuroPessoa("tio"))),
     ].join("");
   } else {
     overline="Ficha do jovem";
@@ -1389,29 +1393,49 @@ function PersonDetailBody({ person }){
 }
 
 // visualização read-only da ficha do casal de tios
+// linha de uma equipe servida pelos tios: badge do EJC + equipe + coordenação
+function LinhaEquipeTio({ r }){
+  return <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+    {r.ejc && <Badge tone="brand">{r.ejc}</Badge>}
+    <span style={{flex:1,fontWeight:600,fontSize:14,minWidth:100}}>{r.eq}</span>
+    {r.coord && <Badge tone="yellow" dot>Coordenação</Badge>}
+  </div>;
+}
+// bloco de saúde/restrições de UMA pessoa do casal (tia ou tio)
+function SaudeTioBloco({ f, pref }){
+  const rf=f[pref+"RestrFisica"], rfo=f[pref+"RestrFisicaOutra"];
+  const ra=f[pref+"RestrAlim"], rao=f[pref+"RestrAlimOutra"];
+  const neuro=f[pref+"Neuro"]||[], neuroOutra=f[pref+"NeuroOutra"];
+  const neuroStr=neuro.map(x=>x==="Outra"?(neuroOutra||"Outra"):x);
+  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <InfoRow label="Restrição física" value={rf==="Outra"?(rfo||"Outra"):rf} full/>
+    <InfoRow label="Restrição alimentar" value={ra==="Outra"?(rao||"Outra"):ra} full/>
+    {neuroStr.length>0 && <div>
+      <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Neurodivergências e saúde mental</div>
+      <ReadChips items={neuroStr} tone="danger"/>
+    </div>}
+  </div>;
+}
+
 function TioDetailBody({ f }){
-  const neuroStr=(f.neuro||[]).map(x=>x==="Outra"?(f.neuroOutra||"Outra"):x);
+  const equipes=(f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[];
   return <>
     <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
-      <div style={rowGrid}>
+      <div style={parGrid}>
         <InfoRow label="Nome da tia" value={f.tiaNome}/>
         <InfoRow label="Nome do tio" value={f.tioNome}/>
         <InfoRow label="Apelido da tia" value={f.tiaApelido}/>
         <InfoRow label="Apelido do tio" value={f.tioApelido}/>
-        <InfoRow label="Telefone da tia" value={f.tiaTel} full={false}/>
-        <InfoRow label="Telefone do tio" value={f.tioTel} full={false}/>
-      </div>
-      <div style={{marginTop:10}}>
-        {f.tiaTelPrincipal && <Badge tone="brand">Principal: tia</Badge>}
-        {f.tioTelPrincipal && <Badge tone="brand">Principal: tio</Badge>}
-      </div>
-      <div style={{...rowGrid,marginTop:16}}>
+        <InfoRow label="Telefone da tia" value={f.tiaTel?(f.tiaTel+(f.tiaTelPrincipal?" · principal":"")):null}/>
+        <InfoRow label="Telefone do tio" value={f.tioTel?(f.tioTel+(f.tioTelPrincipal?" · principal":"")):null}/>
         <InfoRow label="Instagram da tia" value={f.tiaInsta}/>
         <InfoRow label="Instagram do tio" value={f.tioInsta}/>
         <InfoRow label="Data de nascimento da tia" value={f.tiaNasc}/>
         <InfoRow label="Data de nascimento do tio" value={f.tioNasc}/>
         <InfoRow label="E-mail da tia" value={f.tiaEmail}/>
         <InfoRow label="E-mail do tio" value={f.tioEmail}/>
+      </div>
+      <div style={{marginTop:16}}>
         <InfoRow label="Tem matrimônio?" value={f.matrimonio===true?"Sim":f.matrimonio===false?"Não":null}/>
       </div>
     </Section>
@@ -1422,9 +1446,11 @@ function TioDetailBody({ f }){
         {f.fezCalifornia===true && <InfoRow label="Qual fez?" value={f.qualFez}/>}
         {f.fezCalifornia===false && <InfoRow label="Qual seu ECC?" value={f.qualEcc}/>}
       </div>
-      {((f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[]).length>0 && <div style={{marginTop:16}}>
+      {equipes.length>0 && <div style={{marginTop:16}}>
         <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>{f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia"}</div>
-        <ReadChips items={(f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia).map(r=>r.eq)} tone="brand"/>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {equipes.map((r,i)=><LinhaEquipeTio key={i} r={r}/>)}
+        </div>
       </div>}
     </Section>
 
@@ -1435,15 +1461,11 @@ function TioDetailBody({ f }){
       {f.musico && <ReadChips items={f.instrumentos} tone="brand"/>}
     </Section>}
 
-    <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)">
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        <InfoRow label="Restrição física" value={f.restrFisica==="Outra"?(f.restrFisicaOutra||"Outra"):f.restrFisica} full/>
-        <InfoRow label="Restrição alimentar" value={f.restrAlim==="Outra"?(f.restrAlimOutra||"Outra"):f.restrAlim} full/>
-        {neuroStr.length>0 && <div>
-          <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Neurodivergências e saúde mental</div>
-          <ReadChips items={neuroStr} tone="danger"/>
-        </div>}
-      </div>
+    <Section title="Saúde e restrições da tia" icon="heart-pulse" color="var(--brand-red)">
+      <SaudeTioBloco f={f} pref="tia"/>
+    </Section>
+    <Section title="Saúde e restrições do tio" icon="heart-pulse" color="var(--brand-red)">
+      <SaudeTioBloco f={f} pref="tio"/>
     </Section>
   </>;
 }
@@ -1626,6 +1648,8 @@ function Section({ title, icon, color="var(--brand-brown)", desc, children }){
   </Card>;
 }
 const grid2 = {display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16};
+// grid de pares (tia | tio): minmax mais largo garante nunca 3 colunas, só 2 (ou 1 empilhado no celular)
+const parGrid = {display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:"16px 20px",alignItems:"start"};
 
 function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfId }){
   const [f,setF]=useState({
@@ -1860,7 +1884,8 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     tiaTelPrincipal:false, tioTelPrincipal:false,
     matrimonio:null, fezCalifornia:null, equipesEjc:[], equipesCalifornia:[],
     musico:null, musicoQuem:"", instrumentos:[],
-    restrFisica:"", restrFisicaOutra:"", restrAlim:"", restrAlimOutra:"", neuro:[], neuroOutra:"",
+    tiaRestrFisica:"", tiaRestrFisicaOutra:"", tiaRestrAlim:"", tiaRestrAlimOutra:"", tiaNeuro:[], tiaNeuroOutra:"",
+    tioRestrFisica:"", tioRestrFisicaOutra:"", tioRestrAlim:"", tioRestrAlimOutra:"", tioNeuro:[], tioNeuroOutra:"",
     ...(initial||{}),
   });
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
@@ -1914,36 +1939,37 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
       {/* 1. Tia e Tio */}
       <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
-        <div style={grid2}>
+        <div style={parGrid}>
           <Field label="Nome da tia" required error={errors.tiaNome}><Input value={f.tiaNome||""} onChange={e=>set("tiaNome",e.target.value)} error={!!errors.tiaNome} placeholder="Nome completo"/></Field>
           <Field label="Nome do tio" required error={errors.tioNome}><Input value={f.tioNome||""} onChange={e=>set("tioNome",e.target.value)} error={!!errors.tioNome} placeholder="Nome completo"/></Field>
+
           <Field label="Apelido da tia"><Input value={f.tiaApelido||""} onChange={e=>set("tiaApelido",e.target.value)} placeholder="Como chamam a tia"/></Field>
           <Field label="Apelido do tio"><Input value={f.tioApelido||""} onChange={e=>set("tioApelido",e.target.value)} placeholder="Como chamam o tio"/></Field>
-        </div>
 
-        <div style={{...grid2,marginTop:2}}>
-          <Field label="Telefone da tia" error={errors.tiaTel}><Input value={f.tiaTel||""} onChange={e=>set("tiaTel",maskTelefone(e.target.value))} error={!!errors.tiaTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
-          <Field label="Telefone do tio" error={errors.tioTel}><Input value={f.tioTel||""} onChange={e=>set("tioTel",maskTelefone(e.target.value))} error={!!errors.tioTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
-        </div>
-        <div style={{display:"flex",gap:20,flexWrap:"wrap",marginTop:4,marginBottom:16}}>
-          <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
-            <input type="radio" name="telPrincipal" checked={!!f.tiaTelPrincipal} onChange={()=>setPrincipal("tia")}/> Telefone principal para contato (tia)
-          </label>
-          <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
-            <input type="radio" name="telPrincipal" checked={!!f.tioTelPrincipal} onChange={()=>setPrincipal("tio")}/> Telefone principal para contato (tio)
-          </label>
-        </div>
+          <div>
+            <Field label="Telefone da tia" error={errors.tiaTel}><Input value={f.tiaTel||""} onChange={e=>set("tiaTel",maskTelefone(e.target.value))} error={!!errors.tiaTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:8}}>
+              <input type="radio" name="telPrincipal" checked={!!f.tiaTelPrincipal} onChange={()=>setPrincipal("tia")}/> Telefone principal para contato
+            </label>
+          </div>
+          <div>
+            <Field label="Telefone do tio" error={errors.tioTel}><Input value={f.tioTel||""} onChange={e=>set("tioTel",maskTelefone(e.target.value))} error={!!errors.tioTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+            <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:8}}>
+              <input type="radio" name="telPrincipal" checked={!!f.tioTelPrincipal} onChange={()=>setPrincipal("tio")}/> Telefone principal para contato
+            </label>
+          </div>
 
-        <div style={grid2}>
           <Field label="Instagram da tia"><Input value={f.tiaInsta||""} onChange={e=>set("tiaInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
           <Field label="Instagram do tio"><Input value={f.tioInsta||""} onChange={e=>set("tioInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
+
           <Field label="Data de nascimento da tia" error={errors.tiaNasc}><Input value={f.tiaNasc||""} onChange={e=>set("tiaNasc",maskData(e.target.value))} error={!!errors.tiaNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
           <Field label="Data de nascimento do tio" error={errors.tioNasc}><Input value={f.tioNasc||""} onChange={e=>set("tioNasc",maskData(e.target.value))} error={!!errors.tioNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+
           <Field label="E-mail da tia" error={errors.tiaEmail}><Input type="email" value={f.tiaEmail||""} onChange={e=>set("tiaEmail",e.target.value)} error={!!errors.tiaEmail} placeholder="tia@email.com"/></Field>
           <Field label="E-mail do tio" error={errors.tioEmail}><Input type="email" value={f.tioEmail||""} onChange={e=>set("tioEmail",e.target.value)} error={!!errors.tioEmail} placeholder="tio@email.com"/></Field>
         </div>
 
-        <div style={{marginTop:4}}>
+        <div style={{marginTop:20}}>
           <Field label="Tem matrimônio?"><YesNo value={f.matrimonio} onChange={v=>set("matrimonio",v)}/></Field>
         </div>
       </Section>
@@ -1960,16 +1986,16 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
             </select>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no EJC" hint={f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":"")):"Selecione o ECC primeiro"}>
-              <RepeatEquipeSimples value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0}/>
+            <Field label="Equipes que serviu no EJC" hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
+              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={ECC_LIST}/>
             </Field>
           </div>
         </div>}
         {f.fezCalifornia===false && <div style={{marginTop:16}}>
           <Field label="Qual seu ECC? (Número + Nome)"><Input value={f.qualEcc||""} onChange={e=>set("qualEcc",e.target.value)} placeholder="Ex: XV ECC Nossa Senhora de Fátima"/></Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia" hint="Até 2 equipes">
-              <RepeatEquipeSimples value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2}/>
+            <Field label="Equipes que serviu no Califórnia" hint="Até 2 equipes — EJC, equipe e se foi coordenação">
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={ECC_LIST}/>
             </Field>
           </div>
         </div>}
@@ -1988,28 +2014,53 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
         </div>}
       </Section>
 
-      {/* 4. Saúde e restrições */}
-      <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar do casal no encontro">
+      {/* 4. Saúde e restrições — separada por pessoa */}
+      <Section title="Saúde e restrições da tia" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar da tia no encontro">
         <Field label="Restrição física">
-          <ChipGroup options={RESTR_FISICA} value={f.restrFisica} onChange={v=>set("restrFisica",v)}/>
+          <ChipGroup options={RESTR_FISICA} value={f.tiaRestrFisica} onChange={v=>set("tiaRestrFisica",v)}/>
         </Field>
-        {f.restrFisica==="Outra" && <div style={{marginTop:12}}>
-          <Input value={f.restrFisicaOutra||""} onChange={e=>set("restrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
+        {f.tiaRestrFisica==="Outra" && <div style={{marginTop:12}}>
+          <Input value={f.tiaRestrFisicaOutra||""} onChange={e=>set("tiaRestrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
         </div>}
         <div style={{marginTop:18}}>
           <Field label="Restrição ou preferência alimentar">
-            <ChipGroup options={RESTR_ALIM} value={f.restrAlim} onChange={v=>set("restrAlim",v)}/>
+            <ChipGroup options={RESTR_ALIM} value={f.tiaRestrAlim} onChange={v=>set("tiaRestrAlim",v)}/>
           </Field>
-          {f.restrAlim==="Outra" && <div style={{marginTop:12}}>
-            <Input value={f.restrAlimOutra||""} onChange={e=>set("restrAlimOutra",e.target.value)} placeholder="Descreva a restrição"/>
+          {f.tiaRestrAlim==="Outra" && <div style={{marginTop:12}}>
+            <Input value={f.tiaRestrAlimOutra||""} onChange={e=>set("tiaRestrAlimOutra",e.target.value)} placeholder="Descreva a restrição"/>
           </div>}
         </div>
         <div style={{marginTop:18}}>
           <Field label="Neurodivergências e saúde mental" hint="Pode marcar mais de uma opção">
-            <ChipGroup multi options={NEURO} value={f.neuro} onChange={v=>set("neuro",v)}/>
+            <ChipGroup multi options={NEURO} value={f.tiaNeuro} onChange={v=>set("tiaNeuro",v)}/>
           </Field>
-          {(f.neuro||[]).includes("Outra") && <div style={{marginTop:12}}>
-            <Input value={f.neuroOutra||""} onChange={e=>set("neuroOutra",e.target.value)} placeholder="Descreva"/>
+          {(f.tiaNeuro||[]).includes("Outra") && <div style={{marginTop:12}}>
+            <Input value={f.tiaNeuroOutra||""} onChange={e=>set("tiaNeuroOutra",e.target.value)} placeholder="Descreva"/>
+          </div>}
+        </div>
+      </Section>
+
+      <Section title="Saúde e restrições do tio" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar do tio no encontro">
+        <Field label="Restrição física">
+          <ChipGroup options={RESTR_FISICA} value={f.tioRestrFisica} onChange={v=>set("tioRestrFisica",v)}/>
+        </Field>
+        {f.tioRestrFisica==="Outra" && <div style={{marginTop:12}}>
+          <Input value={f.tioRestrFisicaOutra||""} onChange={e=>set("tioRestrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
+        </div>}
+        <div style={{marginTop:18}}>
+          <Field label="Restrição ou preferência alimentar">
+            <ChipGroup options={RESTR_ALIM} value={f.tioRestrAlim} onChange={v=>set("tioRestrAlim",v)}/>
+          </Field>
+          {f.tioRestrAlim==="Outra" && <div style={{marginTop:12}}>
+            <Input value={f.tioRestrAlimOutra||""} onChange={e=>set("tioRestrAlimOutra",e.target.value)} placeholder="Descreva a restrição"/>
+          </div>}
+        </div>
+        <div style={{marginTop:18}}>
+          <Field label="Neurodivergências e saúde mental" hint="Pode marcar mais de uma opção">
+            <ChipGroup multi options={NEURO} value={f.tioNeuro} onChange={v=>set("tioNeuro",v)}/>
+          </Field>
+          {(f.tioNeuro||[]).includes("Outra") && <div style={{marginTop:12}}>
+            <Input value={f.tioNeuroOutra||""} onChange={e=>set("tioNeuroOutra",e.target.value)} placeholder="Descreva"/>
           </div>}
         </div>
       </Section>
@@ -2110,6 +2161,42 @@ function RepeatEquipeSimples({ value, onChange, max }){
     </div>}
     {podeAdd
       ? <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
+            <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+          </select>
+          <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
+        </div>
+      : <p style={{fontSize:12,color:"var(--text-3)"}}>Máximo de {max} equipe{max>1?"s":""} atingido.</p>}
+  </div>;
+}
+
+// lista repetível EJC/ECC | Equipe | Coordenação — usada nas equipes que os tios serviram
+function RepeatEquipeEcc({ value, onChange, max, eccOptions }){
+  const [ejc,setEjc]=useState("");
+  const [eq,setEq]=useState("");
+  const list=value||[];
+  const add=()=>{ if(!ejc||!eq) return; onChange([...list,{ejc,eq,coord:false}]); setEjc("");setEq(""); };
+  const setCoord=(i,coord)=>onChange(list.map((r,j)=>j===i?{...r,coord}:r));
+  const podeAdd = max==null || list.length<max;
+  const selStyle={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",flex:"1 1 150px",minWidth:130};
+  return <div>
+    {list.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+      {list.map((r,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+          <Badge tone="brand">{r.ejc}</Badge>
+          <span style={{flex:1,fontWeight:600,fontSize:14,minWidth:100}}>{r.eq}</span>
+          <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text-2)",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!r.coord} onChange={e=>setCoord(i,e.target.checked)}/> Coordenação
+          </label>
+          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(list.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
+        </div>
+      ))}
+    </div>}
+    {podeAdd
+      ? <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <select value={ejc} onChange={e=>setEjc(e.target.value)} style={selStyle}>
+            <option value="">EJC...</option>{eccOptions.map(t=><option key={t}>{t}</option>)}
+          </select>
           <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
             <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
           </select>
