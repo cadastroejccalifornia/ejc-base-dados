@@ -3102,14 +3102,19 @@ function MemberArea({ user, onLogout }){
   const [tipoEscolhido,setTipoEscolhido]=useState(null); // "jovem"|"tios" — escolha no primeiro cadastro
   useLucide();
 
+  // só fecha o formulário se realmente salvou — se der erro (ex: RLS), avisa e mantém aberto
   const salvarJovem=async (f)=>{
-    if(meuJovem){ await updateJovem(meuJovem.id, fichaToFields(f)); }
-    else{ const novo=formToJovem({...f, email:f.email||user.email}); await addJovem({...novo, user_id:user.id}); }
+    const r = meuJovem
+      ? await updateJovem(meuJovem.id, fichaToFields(f))
+      : await addJovem({...formToJovem({...f, email:f.email||user.email}), user_id:user.id});
+    if(r && r.error){ alert("Não deu para salvar sua ficha: "+(r.error.message||r.error)+"\n\nTire um print e avise o dirigente."); return; }
     setManualEdit(false); setTipoEscolhido(null);
   };
   const salvarTio=async (f)=>{
-    if(meuTio){ await updateTio(meuTio.id, fichaToTioFields(f)); }
-    else{ const novo=formToTio(f); await addTio({...novo, user_id:user.id}); }
+    const r = meuTio
+      ? await updateTio(meuTio.id, fichaToTioFields(f))
+      : await addTio({...formToTio(f), user_id:user.id});
+    if(r && r.error){ alert("Não deu para salvar a ficha dos tios: "+(r.error.message||r.error)+"\n\nTire um print e avise o dirigente."); return; }
     setManualEdit(false); setTipoEscolhido(null);
   };
 
