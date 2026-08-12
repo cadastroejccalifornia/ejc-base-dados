@@ -516,6 +516,50 @@ function EventosResumoMembro(){
   </Card>;
 }
 
+// converte as linhas "públicas" (RPC aniversarios_semana_publico) no mesmo formato
+// de aniversariantes() — mas sem ano, então nunca dá pra calcular idade
+function aniversariantesPublicos(rows){
+  const out=[];
+  (rows||[]).forEach(r=>{
+    if(r.tipo==="jovem"){
+      const p=parseNascBR(r.nasc);
+      if(p) out.push({ id:r.id+"-j", label:r.apelido||(r.nome||"").split(" ")[0]||"—", foto:r.foto, dia:p.dia, mes:p.mes });
+    } else {
+      const pTia=parseNascBR(r.tia_nasc);
+      if(pTia) out.push({ id:r.id+"-tia", label:"Tia "+(apelidoOuPrimeiro(r.tia_nome,r.tia_apelido)||"Tia"), foto:r.foto, dia:pTia.dia, mes:pTia.mes });
+      const pTio=parseNascBR(r.tio_nasc);
+      if(pTio) out.push({ id:r.id+"-tio", label:"Tio "+(apelidoOuPrimeiro(r.tio_nome,r.tio_apelido)||"Tio"), foto:r.foto, dia:pTio.dia, mes:pTio.mes });
+    }
+  });
+  return out;
+}
+
+// card de aniversários da semana pra quem só tem acesso à própria ficha (MemberArea) —
+// vem da RPC aniversarios_semana_publico (contorna o RLS só pra dia/mês, nunca o ano)
+function AniversariosResumoMembro(){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{ supabase.rpc("aniversarios_semana_publico").then(({data,error})=>{ if(!error) setRows(data||[]); else setRows([]); }); },[]);
+  if(rows===null) return null;
+  const hoje=new Date();
+  const ini=inicioSemana(hoje); const fim=new Date(ini); fim.setDate(fim.getDate()+6);
+  const lista=aniversariantesPublicos(rows).map(a=>{ const d=aniversarioNaJanela(a.dia,a.mes,ini,fim); return d?{...a,data:d}:null; }).filter(Boolean).sort((x,y)=>x.data-y.data);
+  return <Card title="🎂 Aniversários da semana" subtitle={fmtDataBR(ymd(ini))+" a "+fmtDataBR(ymd(fim))} style={{marginBottom:18}}>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {lista.length===0 && <div style={{padding:"22px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Ninguém faz aniversário esta semana.</div>}
+      {lista.map((a,i)=>{
+        const ehHoje=a.data&&a.data.getDate()===hoje.getDate()&&a.data.getMonth()===hoje.getMonth();
+        return <div key={a.id+"-"+i} style={{display:"flex",alignItems:"center",gap:12,background:ehHoje?"var(--brand-yellow-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+          <Avatar src={a.foto} name={a.label} size={40}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:14}}>{a.label}</div>
+            <div style={{fontSize:12.5,color:"var(--text-2)"}}>{pad2(a.dia)}/{pad2(a.mes)}{a.data?(" · "+DIAS_ABREV[a.data.getDay()]):""}{ehHoje?" · Hoje 🎉":""}</div>
+          </div>
+        </div>;
+      })}
+    </div>
+  </Card>;
+}
+
 function AniversariosModal({ onClose }){
   const { jovens, tios } = useStore();
   const hoje=new Date();
@@ -680,10 +724,32 @@ function Calendario({ readonly, compacto }){
 /* ======================================================================
    INÍCIO (página principal)
    ====================================================================== */
-function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
+// lista de "últimos cadastros" reusada pros cards de jovens e de tios do Início
+function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTodos }){
+  return <Card title={title} subtitle={"Os 2 cadastros mais recentes"} action={<button onClick={onVerTodos} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver todos<Icon name="chevron-right" size={15}/></button>}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {pessoas.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
+      {pessoas.map((p,i)=>(
+        <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
+          <Avatar src={p.foto} name={p.n} size={48}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{p.n}<Icon name="chevron-right" size={15}/></div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
+              <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{p.tel}</span>
+              {renderTag(p)}
+            </div>
+          </div>
+          <Icon name="chevron-right" size={18}/>
+        </div>
+      ))}
+    </div>
+  </Card>;
+}
+function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario, onGoJovens, onGoTios }){
   const { jovens, tios } = useStore();
   const [anivOpen,setAnivOpen]=useState(false);
-  const ultimos = [...jovens, ...tios].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
+  const ultimosJovens = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,2);
+  const ultimosTios = [...tios].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,2);
   const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t).length;return o;},{});
   const totalJovens = jovens.length;
   return <div>
@@ -697,28 +763,10 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
       <EventosCard onAbrir={onOpenCalendario}/>
     </div>
 
-    {/* Linha 2: últimos cadastros + pessoas por equipe */}
+    {/* Linha 2: últimos cadastros (jovens/tios separados) + pessoas por equipe */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
-      {/* Últimos 3 cadastros */}
-      <Card title="Últimos cadastros" subtitle="As 3 pessoas mais recentes" action={<Select value="Ver todos"/>}>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {ultimos.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
-          {ultimos.map((p,i)=>{
-            const isTio = p.mjc===undefined;
-            return <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
-              <Avatar src={p.foto} name={p.n} size={48}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{p.n}<Icon name="chevron-right" size={15}/></div>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
-                  <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{p.tel}</span>
-                  {isTio ? <Tag color="var(--cat-terracotta)">Tios</Tag> : <Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>}
-                </div>
-              </div>
-              <Icon name="chevron-right" size={18}/>
-            </div>;
-          })}
-        </div>
-      </Card>
+      <UltimosCadastrosCard title="Últimos jovens" pessoas={ultimosJovens} renderTag={p=><Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoJovens}/>
+      <UltimosCadastrosCard title="Últimos tios" pessoas={ultimosTios} renderTag={()=><Tag color="var(--cat-terracotta)">Tios</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoTios}/>
 
       {/* Quantidade por equipe do MJC */}
       <Card title="Pessoas por equipe do MJC">
@@ -745,16 +793,20 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
 /* ======================================================================
    JOVENS (tabela)
    ====================================================================== */
-function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onClearTeam }){
+function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onClearTeam, onSetTeam }){
   const [q,setQ]=useState("");
   const team = teamFilter||null;
   const list=rows.filter(r=>r.n.toLowerCase().includes(q.toLowerCase()) && (!team || r.mjc===team));
+  const selectStyle={display:"inline-flex",alignItems:"center",borderRadius:99,border:"none",cursor:"pointer",padding:"10px 16px",fontSize:14,fontWeight:600,color:"var(--text)",background:"var(--surface)",boxShadow:"var(--shadow-sm)",fontFamily:"var(--font-sans)",outline:"none"};
   return <Card pad="0" style={{overflow:"hidden"}}>
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",flexWrap:"wrap"}}>
       <SearchInput placeholder={kind==="jovem"?"Buscar jovem...":"Buscar casal..."} value={q} onChange={setQ} maxWidth={340}/>
-      {kind==="jovem" && team
+      {kind==="jovem" && (team
         ? <button onClick={onClearTeam} title="Limpar filtro" style={{display:"inline-flex",alignItems:"center",gap:8,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:14,fontWeight:600,padding:"9px 14px",borderRadius:"var(--r-pill)",background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}}><span style={{color:"var(--brand-yellow-soft)",fontWeight:500}}>Equipe:</span> {team} <Icon name="x" size={15}/></button>
-        : <Select label="Equipe" value="Todas"/>}
+        : <select value="" onChange={e=>{ if(e.target.value) onSetTeam&&onSetTeam(e.target.value); }} style={selectStyle}>
+            <option value="">Equipe: Todas</option>
+            {MJC_TEAMS.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>)}
       <div style={{marginLeft:"auto"}}>
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>{kind==="jovem"?"Adicionar jovem":"Adicionar casal"}</Button>
       </div>
@@ -785,14 +837,14 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
     {list.length===0 && <div style={{padding:"40px",textAlign:"center",color:"var(--text-3)"}}>{q?('Nenhum resultado para "'+q+'".'):team?("Ninguém na equipe "+team+" ainda."):"Nenhum cadastro ainda."}</div>}
   </Card>;
 }
-function Jovens({ onNovo, onOpenPerson, teamFilter, onClearTeam }){
+function Jovens({ onNovo, onOpenPerson, teamFilter, onClearTeam, onSetTeam }){
   const { jovens } = useStore();
   const sub = teamFilter
     ? jovens.filter(j=>j.mjc===teamFilter).length+" jovens na equipe "+teamFilter
     : jovens.length+" jovens cadastrados";
   return <div>
     <Header title="Jovens" sub={sub}/>
-    <PeopleTable rows={jovens} onNovo={onNovo} kind="jovem" onOpenPerson={onOpenPerson} teamFilter={teamFilter} onClearTeam={onClearTeam}/>
+    <PeopleTable rows={jovens} onNovo={onNovo} kind="jovem" onOpenPerson={onOpenPerson} teamFilter={teamFilter} onClearTeam={onClearTeam} onSetTeam={onSetTeam}/>
   </div>;
 }
 function Tios({ onNovo, onOpenPerson }){
@@ -919,7 +971,7 @@ function ExportarModal({ montagem, tabAtual, onClose }){
   const disponivel=typeof XLSX!=="undefined";
 
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
-    <div onClick={e=>e.stopPropagation()} style={{width:520,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
+    <div onClick={e=>e.stopPropagation()} style={{width:520,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
       <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Exportar para Excel</h3>
       <p style={{margin:"0 0 18px",fontSize:14,color:"var(--text-2)"}}>Escolha os dados. Cada pessoa vira uma linha na planilha.</p>
 
@@ -1255,7 +1307,7 @@ function PersonDetail({ person, onClose, onEdit }){
   useLucide();
   const f=person.ficha; // ficha completa (quando cadastrado pelo formulário)
   const isTio=person.mjc===undefined;
-  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
       <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
         <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
@@ -1753,7 +1805,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 
   useLucide();
 
-  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
     {/* top bar */}
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
       <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
@@ -1974,7 +2026,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     else setF(s=>({...s,tiaTelPrincipal:false,tioTelPrincipal:true}));
   };
 
-  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
       <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
         <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
@@ -2370,7 +2422,7 @@ function FormBuilder({ form, onClose, onSave }){
   const move=(i,dir)=>{ const j=i+dir; if(j<0||j>=campos.length)return; const arr=[...campos]; [arr[i],arr[j]]=[arr[j],arr[i]]; setCampos(arr); };
   const setCond=(key,cond)=>setCampos(l=>l.map(c=>c.key===key?{...c,cond:cond||undefined}:c));
 
-  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto"}}>
+  return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
       <div style={{maxWidth:820,margin:"0 auto",padding:"16px 22px",display:"flex",alignItems:"center",gap:14}}>
         <IconButton label="Voltar" variant="soft" onClick={onClose}><Icon name="arrow-left" size={18}/></IconButton>
@@ -2572,7 +2624,7 @@ function NovoDirigenteModal({ onClose, onCreate, initial }){
     if(r&&r.error) setErrs(x=>({...x,email:(r.error.message||"Não deu certo — confira o e-mail (pode já haver um convite pendente para ele).")}));
   };
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={onClose}>
-    <div onClick={e=>e.stopPropagation()} style={{width:480,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto"}}>
+    <div onClick={e=>e.stopPropagation()} style={{width:480,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
       <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>{editing?"Corrigir convite":"Novo dirigente"}</h3>
       <p style={{margin:"0 0 16px",fontSize:14,color:"var(--text-2)"}}>{editing?"Confira os dados e reenviamos o link de acesso pro e-mail correto.":"O dirigente terá acesso completo à ferramenta."}</p>
 
@@ -2827,14 +2879,14 @@ function App({ user, onLogout }){
   const saveFicha=async f=>{ await addJovem(formToJovem(f)); setCadKind(null); setTeamFilter(null); setView("jovens"); };
   const saveTios=async f=>{ await addTio(formToTio(f)); setCadKind(null); setTeamFilter(null); setView("tios"); };
   let screen;
-  if(view==="jovens") screen=<Jovens onNovo={openCadJovem} onOpenPerson={openPerson} teamFilter={teamFilter} onClearTeam={clearTeam}/>;
+  if(view==="jovens") screen=<Jovens onNovo={openCadJovem} onOpenPerson={openPerson} teamFilter={teamFilter} onClearTeam={clearTeam} onSetTeam={t=>setTeamFilter(t)}/>;
   else if(view==="tios") screen=<Tios onNovo={openCadTios} onOpenPerson={openPerson}/>;
   else if(view==="montagem") screen=<Montagem/>;
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
   else if(view==="config" && isOwner) screen=<Configuracoes user={user} onEditPerson={p=>setEditPerson(p)}/>;
-  else screen=<Inicio onNovo={openCadChooser} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")}/>;
+  else screen=<Inicio onNovo={openCadChooser} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")} onGoJovens={()=>go("jovens")} onGoTios={()=>go("tios")}/>;
 
   const editIsTio = editPerson && editPerson.mjc===undefined;
   const editarSalvarJovem=async f=>{ await updateJovem(editPerson.id, fichaToFields(f)); setEditPerson(null); };
@@ -3191,7 +3243,8 @@ function MemberArea({ user, onLogout }){
     </div>
     {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
     <div style={{maxWidth:820,margin:"0 auto",padding:"6px 22px 40px"}}>
-      {/* Próximos eventos do movimento (somente leitura) no topo */}
+      {/* Aniversários da semana (dia/mês, sem idade) e próximos eventos — somente leitura */}
+      <AniversariosResumoMembro/>
       <EventosResumoMembro/>
       <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--brand-yellow-soft)",color:"var(--on-yellow)",borderRadius:"var(--r-md)",padding:"12px 16px",margin:"6px 0 18px",fontSize:13,fontWeight:600}}>
         <Icon name="shield-check" size={16}/>Você está na sua área pessoal. Aqui você só vê e atualiza a sua própria ficha.

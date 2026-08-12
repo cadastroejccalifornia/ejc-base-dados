@@ -8,13 +8,13 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 - [x] **A3.** Quando a pessoa é "de fora" (não fez no Califórnia): guardar e mostrar também **em qual EJC** ela serviu, além da equipe. *(campo trocado de lista simples pra `RepeatEquipeEcc`, igual já era feito pros tios)*
 - [x] **A4.** Comprimir/redimensionar imagem de foto para gastar menos espaço. *(reduzido de 480px/85% pra 320px/80% — maior uso na tela é 84px, cobre retina 3x com folga)*
 
-## Bloco B — Início & bugs de UI
-- [ ] **B1.** Aniversário da semana: mostrar na ficha para quem **não** tem acesso ao portal, só dia/mês (sem idade/ano). Dentro do portal, manter como está hoje.
-- [ ] **B2.** Botão "Ver todos" nos últimos cadastros deve navegar para a aba Jovens.
-- [ ] **B3.** Início: separar "últimos cadastros" em dois blocos — últimos 2 jovens e últimos 2 tios.
-- [ ] **B4.** Corrigir bug: filtros não funcionam nas abas Jovens e Tios.
-- [ ] **B5.** Corrigir bug: no celular, ao editar a ficha de outra pessoa como dirigente, a página não rola/desce.
-- [ ] **B6.** Revisão geral de responsividade — fichas no celular (prioridade) e telas wide de desktop.
+## Bloco B — Início & bugs de UI ✅ (2026-08-12, ver ressalvas)
+- [x] **B1.** Aniversário da semana: mostrar na ficha para quem **não** tem acesso ao portal, só dia/mês (sem idade/ano). Dentro do portal, manter como está hoje. *(confirmado com o usuário: é a Área do Membro. Card novo `AniversariosResumoMembro`, alimentado pela RPC `aniversarios_semana_publico` — **precisa rodar** [supabase_migration_aniversarios_publicos.sql](supabase_migration_aniversarios_publicos.sql) no SQL Editor antes de funcionar)*
+- [x] **B2.** Botão "Ver todos" nos últimos cadastros deve navegar para a aba Jovens. *(e o de Tios pra aba Tios, já que o card foi separado em B3)*
+- [x] **B3.** Início: separar "últimos cadastros" em dois blocos — últimos 2 jovens e últimos 2 tios.
+- [x] **B4.** Corrigir bug: filtros não funcionam nas abas Jovens e Tios. *(o dropdown "Equipe" em Jovens era só decorativo — agora filtra de verdade; sumiu de Tios, que não tem equipe do MJC)*
+- [x] **B5.** Corrigir bug: no celular, ao editar a ficha de outra pessoa como dirigente, a página não rola/desce. *(adicionado `WebkitOverflowScrolling:touch` + `overscrollBehavior:contain` nos overlays de tela cheia e nos modais — é o fix padrão pra esse bug conhecido do Safari iOS; **não consegui confirmar num celular real** a partir daqui, o preview deste ambiente não tira screenshot — testar e avisar se persistir)*
+- [~] **B6.** Revisão geral de responsividade — fichas no celular (prioridade) e telas wide de desktop. *(sem regressão nova identificada na leitura do código; item aberto — como não consigo ver a tela renderizada aqui, preciso que você aponte telas/prints específicos com problema pra eu corrigir)*
 
 ## Bloco C — Acesso & Dirigentes
 - [ ] **C1.** Qualquer admin/dirigente pode excluir um cadastro, sempre com confirmação.
