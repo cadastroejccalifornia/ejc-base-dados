@@ -178,7 +178,11 @@ function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r
 function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
-function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, descricao:r.descricao }; }
+function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, descricao:r.descricao, responsabilidade:r.responsabilidade }; }
+// responsabilidade do evento: as 5 equipes do MJC + EJC e MJC como categorias mais amplas
+const RESP_EVENTO=["EJC","MJC",...MJC_TEAMS];
+const RESP_COLOR={ EJC:"var(--brand-brown)", MJC:"var(--cat-red)", ...MJC_COLOR };
+const RESP_ICON={ EJC:"cross", MJC:"users", ...MJC_ICON };
 
 // monta o endereço completo legível a partir das partes da ficha
 function enderecoCompleto(f){
@@ -343,8 +347,13 @@ function StoreProvider({ user, children }){
       return { error };
     },
     addEvento: async (ev)=>{
-      const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null }).select().single();
+      const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).select().single();
       if(!error) setEventos(l=>[...l,rowToEvento(data)].sort((a,b)=>a.data.localeCompare(b.data)));
+      return { data: data?rowToEvento(data):null, error };
+    },
+    updateEvento: async (id,ev)=>{
+      const { data, error } = await supabase.from("eventos").update({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).eq("id",id).select().single();
+      if(!error) setEventos(l=>l.map(e=>e.id===id?rowToEvento(data):e).sort((a,b)=>a.data.localeCompare(b.data)));
       return { data: data?rowToEvento(data):null, error };
     },
     removeEvento: async (id)=>{
@@ -617,10 +626,12 @@ function AniversariosModal({ onClose }){
   </div>;
 }
 
-function NovoEventoModal({ dataInicial, onClose, onSave }){
-  const [titulo,setTitulo]=useState("");
-  const [data,setData]=useState(dataInicial||"");
-  const [descricao,setDescricao]=useState("");
+function NovoEventoModal({ dataInicial, initial, onClose, onSave }){
+  const editing = !!initial;
+  const [titulo,setTitulo]=useState(initial?.titulo||"");
+  const [data,setData]=useState(initial?.data||dataInicial||"");
+  const [descricao,setDescricao]=useState(initial?.descricao||"");
+  const [responsabilidade,setResponsabilidade]=useState(initial?.responsabilidade||"");
   const [errs,setErrs]=useState({});
   const [busy,setBusy]=useState(false);
   useLucide();
@@ -628,15 +639,15 @@ function NovoEventoModal({ dataInicial, onClose, onSave }){
     const e={}; if(!titulo.trim()) e.titulo="Informe o título."; if(!data) e.data="Escolha a data.";
     setErrs(e); if(Object.keys(e).length) return;
     setBusy(true);
-    const r=await onSave({titulo:titulo.trim(),data,descricao:descricao.trim()});
+    const r=await onSave({titulo:titulo.trim(),data,descricao:descricao.trim(),responsabilidade:responsabilidade||null});
     setBusy(false);
     if(r&&r.error){ const msg=r.error.message||""; setErrs({titulo:(r.error.code==="42P01"||/does not exist|schema cache|relation/i.test(msg))?"A tabela de eventos ainda não existe no Supabase — rode a migração e tente de novo.":msg}); return; }
     onClose();
   };
   const inp=err=>({width:"100%",border:"none",background:err?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"});
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={onClose}>
-    <div onClick={e=>e.stopPropagation()} style={{width:460,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
-      <h3 style={{margin:"0 0 18px",fontSize:20,fontWeight:800}}>Novo evento</h3>
+    <div onClick={e=>e.stopPropagation()} style={{width:460,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+      <h3 style={{margin:"0 0 18px",fontSize:20,fontWeight:800}}>{editing?"Editar evento":"Novo evento"}</h3>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Título</label>
       <input autoFocus value={titulo} onChange={e=>{setTitulo(e.target.value);setErrs(x=>({...x,titulo:null}));}} placeholder="Ex: Reunião geral do MJC" style={inp(errs.titulo)}/>
       {errs.titulo && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.titulo}</div>}
@@ -645,22 +656,30 @@ function NovoEventoModal({ dataInicial, onClose, onSave }){
       <input type="date" value={data} onChange={e=>{setData(e.target.value);setErrs(x=>({...x,data:null}));}} style={inp(errs.data)}/>
       {errs.data && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.data}</div>}
       <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Responsabilidade <span style={{color:"var(--text-3)",fontWeight:500}}>· opcional</span></label>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {RESP_EVENTO.map(r=>(
+          <button key={r} type="button" onClick={()=>setResponsabilidade(responsabilidade===r?"":r)} style={{border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,fontWeight:600,padding:"8px 14px",borderRadius:"var(--r-pill)",background:responsabilidade===r?RESP_COLOR[r]:"var(--surface-2)",color:responsabilidade===r?"#fff":"var(--text-2)"}}>{r}</button>
+        ))}
+      </div>
+      <div style={{height:14}}/>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Descrição <span style={{color:"var(--text-3)",fontWeight:500}}>· opcional</span></label>
       <textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={3} placeholder="Detalhes do evento..." style={{...inp(false),resize:"vertical"}}/>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:22}}>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={salvar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Salvando...":"Salvar evento"}</Button>
+        <Button variant="primary" onClick={salvar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={16}/>}>{busy?"Salvando...":(editing?"Salvar alterações":"Salvar evento")}</Button>
       </div>
     </div>
   </div>;
 }
 
 function Calendario({ readonly, compacto }){
-  const { eventos, addEvento, removeEvento } = useStore();
+  const { eventos, addEvento, updateEvento, removeEvento } = useStore();
   useLucide();
   const isMobile=useIsMobile();
   const [ref,setRef]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [addOpen,setAddOpen]=useState(null);
+  const [editOpen,setEditOpen]=useState(null);
   const [confirmar,setConfirmar]=useState(null);
   const ano=ref.getFullYear(), mes=ref.getMonth();
   const primeiroDiaSemana=new Date(ano,mes,1).getDay();
@@ -709,15 +728,22 @@ function Calendario({ readonly, compacto }){
                   <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{diaSemanaDe(e.data)}</div>
                 </span>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
+                    {e.responsabilidade && <Tag color={RESP_COLOR[e.responsabilidade]}>{e.responsabilidade}</Tag>}
+                  </div>
                   {e.descricao && <div style={{fontSize:13,color:"var(--text-2)",marginTop:2,whiteSpace:"pre-wrap"}}>{e.descricao}</div>}
                 </div>
-                {!readonly && <IconButton label="Remover evento" size={32} variant="soft" onClick={()=>setConfirmar(e)}><Icon name="trash-2" size={15}/></IconButton>}
+                {!readonly && <div style={{display:"flex",gap:6,flex:"0 0 auto"}}>
+                  <IconButton label="Editar evento" size={32} variant="soft" onClick={()=>setEditOpen(e)}><Icon name="pencil" size={15}/></IconButton>
+                  <IconButton label="Remover evento" size={32} variant="soft" onClick={()=>setConfirmar(e)}><Icon name="trash-2" size={15}/></IconButton>
+                </div>}
               </div>
             ))}
           </div>}
     </Card>
     {!readonly && addOpen && <NovoEventoModal dataInicial={addOpen.data} onClose={()=>setAddOpen(null)} onSave={addEvento}/>}
+    {!readonly && editOpen && <NovoEventoModal initial={editOpen} onClose={()=>setEditOpen(null)} onSave={f=>updateEvento(editOpen.id,f)}/>}
     {!readonly && confirmar && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80}} onClick={()=>setConfirmar(null)}>
       <div onClick={e=>e.stopPropagation()} style={{width:380,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px"}}>
         <h3 style={{margin:"0 0 8px",fontSize:18,fontWeight:800}}>Remover evento</h3>

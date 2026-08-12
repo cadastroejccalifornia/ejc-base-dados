@@ -26,9 +26,9 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 - [x] **D2.** Remover os relatórios de "pessoas ativas" e "músicos ativos". *(feito junto do A2, 2026-08-12 — era a mesma limpeza)*
 - [x] **D3.** Todo card de relatório deve ser clicável e abrir a lista de pessoas correspondente. *(as barras de "Músicos por instrumento" e "Pessoas por equipe do MJC" agora abrem o mesmo modal de lista, reusado do D1)*
 
-## Bloco E — Calendário
-- [ ] **E1.** Permitir editar um evento do calendário (não só excluir).
-- [ ] **E2.** Campo "responsabilidade do evento" com opções: EJC, MJC, Ficha, Pós, Montagem, Finanças, Palestra.
+## Bloco E — Calendário ✅ (2026-08-12)
+- [x] **E1.** Permitir editar um evento do calendário (não só excluir). *(botão de editar (lápis) ao lado do de excluir em cada evento da lista; abre o mesmo modal de criar, agora reusado pra editar via novo `updateEvento`)*
+- [x] **E2.** Campo "responsabilidade do evento" com opções: EJC, MJC, Ficha, Pós, Montagem, Finanças, Palestra. *(chips no modal de criar/editar; aparece como tag colorida no evento da lista. **Precisa rodar** [supabase_migration_evento_responsabilidade.sql](supabase_migration_evento_responsabilidade.sql) no Supabase antes de funcionar — adiciona a coluna nova)*
 
 ## Bloco F — EJCs (edições)
 - [ ] **F1.** Opção de cadastrar novos EJCs no banco (hoje a lista vai só até XXXI/2026).
