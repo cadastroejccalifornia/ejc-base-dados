@@ -295,6 +295,16 @@ function StoreProvider({ user, children }){
       if(!error) setJovens(l=>l.map(j=>j.id===id?rowToJovem(data):j));
       return { data: data?rowToJovem(data):null, error };
     },
+    removeJovem: async (id)=>{
+      const { error } = await supabase.from("jovens").delete().eq("id",id);
+      if(!error) setJovens(l=>l.filter(j=>j.id!==id));
+      return { error };
+    },
+    removeTio: async (id)=>{
+      const { error } = await supabase.from("tios").delete().eq("id",id);
+      if(!error) setTios(l=>l.filter(t=>t.id!==id));
+      return { error };
+    },
     addTio: async (t)=>{
       const { data, error } = await supabase.from("tios").insert(tioToRow(t)).select().single();
       if(!error) setTios(l=>[rowToTio(data),...l]);
@@ -1303,10 +1313,12 @@ function exportarFichaPDF(person){
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-function PersonDetail({ person, onClose, onEdit }){
+function PersonDetail({ person, onClose, onEdit, onDelete }){
   useLucide();
   const f=person.ficha; // ficha completa (quando cadastrado pelo formulário)
   const isTio=person.mjc===undefined;
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [busy,setBusy]=useState(false);
   return <div style={{position:"fixed",inset:0,zIndex:60,background:"linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%)",overflow:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
     <div style={{position:"sticky",top:0,zIndex:5,background:"color-mix(in oklch, var(--bg) 88%, transparent)",backdropFilter:"blur(8px)",borderBottom:"1px solid var(--hairline)"}}>
       <div style={{maxWidth:820,margin:"0 auto",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,rowGap:10,flexWrap:"wrap"}}>
@@ -1317,12 +1329,24 @@ function PersonDetail({ person, onClose, onEdit }){
         </div>
         <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
         {onEdit && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar</Button>}
+        {onDelete && <IconButton label="Excluir cadastro" variant="soft" onClick={()=>setConfirmDel(true)}><Icon name="trash-2" size={18}/></IconButton>}
       </div>
     </div>
 
     <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
       <PersonDetailBody person={person}/>
     </div>
+
+    {confirmDel && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={()=>!busy&&setConfirmDel(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:420,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+        <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Excluir cadastro</h3>
+        <p style={{margin:"0 0 22px",fontSize:14,color:"var(--text-2)"}}>Tem certeza que quer excluir o cadastro de <b>{person.n}</b>? Essa ação não pode ser desfeita.</p>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Button variant="ghost" onClick={()=>setConfirmDel(false)} disabled={busy}>Cancelar</Button>
+          <Button variant="primary" onClick={async ()=>{ setBusy(true); await onDelete(); setBusy(false); }} disabled={busy} style={{background:"var(--brand-red)",opacity:busy?.7:1}} iconLeft={<Icon name="trash-2" size={15}/>}>{busy?"Excluindo...":"Excluir"}</Button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -2805,7 +2829,7 @@ function TipoCadastroModal({ onClose, onChoose }){
 
 // avatar do rail: clicar abre um menu com Configurações/Alterar senha/Sair (limpa a barra lateral)
 // menu do avatar — `align` controla de que lado o popover se ancora, pra nunca vazar da tela
-function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout, align="left", drop="up" }){
+function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout, onMinhaFicha, align="left", drop="up" }){
   const [open,setOpen]=useState(false);
   const ref=useRef(null);
   useLucide();
@@ -2835,6 +2859,7 @@ function RailAvatarMenu({ user, isOwner, onOpenConfig, onOpenSenha, onLogout, al
     {open && <div style={popStyle}>
       {user&&user.email && <div style={{padding:"8px 12px 10px",fontSize:12,color:"var(--text-3)",borderBottom:"1px solid var(--hairline)",marginBottom:6,overflowWrap:"anywhere"}}>{user.email}</div>}
       {isOwner && item("settings","Configurações",onOpenConfig)}
+      {onMinhaFicha && item("user-round","Minha ficha",onMinhaFicha)}
       {item("key-round","Alterar senha",onOpenSenha)}
       {item("log-out","Sair",onLogout,true)}
     </div>}
@@ -2856,7 +2881,8 @@ const NAV=[
 // e-mails com acesso à aba Configurações (senhas + dirigentes) — exclusivo do admin dono
 const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
 function App({ user, onLogout }){
-  const { addJovem, updateJovem, addTio, updateTio } = useStore();
+  const { jovens, addJovem, updateJovem, addTio, updateTio, removeJovem, removeTio } = useStore();
+  const meuJovem = jovens.find(j=>j.user_id===user.id) || null;
   // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
   // Fica sempre dentro do menu do avatar (RailAvatarMenu), tanto no celular quanto no desktop
   const isOwner = user && SUPER_ADMINS.includes((user.email||"").trim().toLowerCase());
@@ -2895,7 +2921,8 @@ function App({ user, onLogout }){
     {chooserOpen && <TipoCadastroModal onClose={()=>setChooserOpen(false)} onChoose={k=>{ setChooserOpen(false); setCadKind(k); }}/>}
     {cadKind==="jovem" && <FichaForm onClose={()=>setCadKind(null)} onSave={saveFicha}/>}
     {cadKind==="tios" && <TiosForm onClose={()=>setCadKind(null)} onSave={saveTios}/>}
-    {person && <PersonDetail person={person} onClose={()=>setPerson(null)} onEdit={()=>{ setEditPerson(person); setPerson(null); }}/>}
+    {person && <PersonDetail person={person} onClose={()=>setPerson(null)} onEdit={()=>{ setEditPerson(person); setPerson(null); }}
+      onDelete={async ()=>{ await (person.mjc===undefined?removeTio:removeJovem)(person.id); setPerson(null); }}/>}
     {editPerson && !editIsTio && <FichaForm initial={editPerson.ficha||{}} selfId={editPerson.id} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvarJovem}/>}
     {editPerson && editIsTio && <TiosForm initial={editPerson.ficha||{}} overline={"EDITAR CADASTRO"} title={"Editar "+editPerson.n} saveLabel="Salvar alterações" onClose={()=>setEditPerson(null)} onSave={editarSalvarTio}/>}
     {senhaOpen && <TrocarSenhaModal onClose={()=>setSenhaOpen(false)}/>}
@@ -2914,7 +2941,7 @@ function App({ user, onLogout }){
               </button>;})}
           </div>
           <div style={{flex:"0 0 auto",paddingLeft:4,borderLeft:"1px solid var(--hairline)"}}>
-            <RailAvatarMenu user={user} isOwner={isOwner} onOpenConfig={()=>go("config")} onOpenSenha={()=>setSenhaOpen(true)} onLogout={onLogout} align="right" drop="up"/>
+            <RailAvatarMenu user={user} isOwner={isOwner} onOpenConfig={()=>go("config")} onOpenSenha={()=>setSenhaOpen(true)} onLogout={onLogout} onMinhaFicha={meuJovem?()=>setPerson(meuJovem):null} align="right" drop="up"/>
           </div>
         </nav>
         {overlays}
@@ -2934,7 +2961,7 @@ function App({ user, onLogout }){
               <Icon name={it.icon} size={20}/>
             </button>;})}
         </div>
-        <RailAvatarMenu user={user} isOwner={isOwner} onOpenConfig={()=>go("config")} onOpenSenha={()=>setSenhaOpen(true)} onLogout={onLogout}/>
+        <RailAvatarMenu user={user} isOwner={isOwner} onOpenConfig={()=>go("config")} onOpenSenha={()=>setSenhaOpen(true)} onLogout={onLogout} onMinhaFicha={meuJovem?()=>setPerson(meuJovem):null}/>
       </nav>
       <main style={{flex:1,minWidth:0,background:"var(--surface-2)",borderRadius:"var(--r-2xl)",padding:"28px 30px",overflow:"auto"}}>{screen}</main>
       {overlays}

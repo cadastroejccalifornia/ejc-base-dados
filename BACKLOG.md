@@ -16,10 +16,10 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 - [x] **B5.** Corrigir bug: no celular, ao editar a ficha de outra pessoa como dirigente, a página não rola/desce. *(adicionado `WebkitOverflowScrolling:touch` + `overscrollBehavior:contain` nos overlays de tela cheia e nos modais — é o fix padrão pra esse bug conhecido do Safari iOS; **não consegui confirmar num celular real** a partir daqui, o preview deste ambiente não tira screenshot — testar e avisar se persistir)*
 - [~] **B6.** Revisão geral de responsividade — fichas no celular (prioridade) e telas wide de desktop. *(sem regressão nova identificada na leitura do código; item aberto — como não consigo ver a tela renderizada aqui, preciso que você aponte telas/prints específicos com problema pra eu corrigir)*
 
-## Bloco C — Acesso & Dirigentes
-- [ ] **C1.** Qualquer admin/dirigente pode excluir um cadastro, sempre com confirmação.
-- [ ] **C2.** Área do dirigente: opção "Minha ficha" (acesso rápido à própria ficha + edição).
-- [ ] **C3.** Todos os dirigentes devem ter acesso ao portal (poder atualizar senha e editar fichas) — cadastros/funções específicas por tipo de cargo vêm depois.
+## Bloco C — Acesso & Dirigentes ✅ (2026-08-12)
+- [x] **C1.** Qualquer admin/dirigente pode excluir um cadastro, sempre com confirmação. *(botão de lixeira na ficha (`PersonDetail`), abre modal de confirmação, chama `removeJovem`/`removeTio` novos no store — RLS já permitia exclusão pra dirigentes, não precisou de migração)*
+- [x] **C2.** Área do dirigente: opção "Minha ficha" (acesso rápido à própria ficha + edição). *(item novo no menu do avatar — acha a ficha do próprio dirigente pelo `user_id` e abre a mesma tela de visualização/edição usada pra qualquer pessoa)*
+- [x] **C3.** Todos os dirigentes devem ter acesso ao portal (poder atualizar senha e editar fichas). *(já era assim na arquitetura atual — qualquer linha na tabela `dirigentes` vira admin com App completo, "Alterar senha" e edição de fichas, independente do cargo; nenhum código restringe por cargo hoje. Só "Configurações" — cadastrar/remover outros dirigentes — fica exclusivo do dono, o que é intencional. A separação por tipo de cargo fica pra depois, como você mesmo colocou)*
 
 ## Bloco D — Relatórios
 - [ ] **D1.** Filtro por equipe + EJC (ex: "todo mundo que foi Secretaria no XXXI EJC") → lista de cards (foto, nome, telefone), ordenada: jovem coordenador → tio coordenador → equipe → tio apoio.
