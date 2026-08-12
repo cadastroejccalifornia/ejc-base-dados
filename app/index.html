@@ -2580,6 +2580,61 @@ function BarRow({ label, value, max, color, icon }){
   </div>;
 }
 const CAT_PALETTE=["var(--cat-terracotta)","var(--cat-plum)","var(--cat-blue)","var(--cat-olive)","var(--cat-brown)","var(--cat-yellow)","var(--cat-red)"];
+// tira o ano entre parênteses ("XXVIII EJC (2023)" -> "XXVIII EJC") pra poder comparar edições
+// vindas de campos diferentes da ficha (com ano ou não) como sendo a mesma coisa
+function normalizaEdicaoEjc(s){ return (s||"").replace(/\s*\(\d{4}\)\s*$/,"").trim(); }
+// histórico de serviço no Califórnia: uma linha por (pessoa, edição do EJC, equipe) — jovens e
+// tios, juntando os vários formatos de campo que a ficha usa (equipesCalifornia/equipesEjc)
+function historicoServicoEjc(jovens, tios){
+  const out=[];
+  (jovens||[]).forEach(j=>{
+    const f=j.ficha; if(!f) return;
+    (f.equipesCalifornia||[]).forEach(r=>{
+      const edicao=normalizaEdicaoEjc(r.ano||r.ejc); if(!edicao||!r.eq) return;
+      out.push({ person:j, isTio:false, edicao, eq:r.eq, coord:!!r.coord });
+    });
+  });
+  (tios||[]).forEach(t=>{
+    const f=t.ficha; if(!f) return;
+    [...(f.equipesEjc||[]),...(f.equipesCalifornia||[])].forEach(r=>{
+      const edicao=normalizaEdicaoEjc(r.ejc); if(!edicao||!r.eq) return;
+      out.push({ person:t, isTio:true, edicao, eq:r.eq, coord:!!r.coord });
+    });
+  });
+  return out;
+}
+// ordem pedida: jovem coordenador -> tio coordenador -> equipe -> tio apoio
+const papelPrioridade = r => r.isTio ? (r.coord?1:3) : (r.coord?0:2);
+const papelLabel = r => r.isTio ? (r.coord?"Tio coordenador":"Tio apoio") : (r.coord?"Jovem coordenador":"Equipe");
+
+// modal genérico de lista de pessoas (foto, nome, telefone) — usado por todos os "cards clicáveis" dos Relatórios
+function PessoasListModal({ title, subtitle, pessoas, onClose }){
+  useLucide();
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70,padding:16}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:520,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:16}}>
+        <div style={{minWidth:0}}>
+          <h3 style={{margin:0,fontSize:19,fontWeight:800}}>{title}</h3>
+          {subtitle && <p style={{margin:"4px 0 0",fontSize:13,color:"var(--text-2)"}}>{subtitle}</p>}
+        </div>
+        <IconButton label="Fechar" variant="soft" onClick={onClose}><Icon name="x" size={16}/></IconButton>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {pessoas.length===0 && <div style={{padding:"26px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Ninguém encontrado.</div>}
+        {pessoas.map((p,i)=>(
+          <div key={(p.person.id||i)+"-"+i} style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
+            <Avatar src={p.person.foto} name={p.person.n} size={44}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.person.n}</div>
+              {p.person.tel && p.person.tel!=="—" && <div style={{fontSize:12.5,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5,marginTop:2}}><Icon name="phone" size={12}/>{p.person.tel}</div>}
+            </div>
+            {p.papel && <Badge tone="brand">{p.papel}</Badge>}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
 
 function Relatorios(){
   const { jovens, tios } = useStore();
@@ -2594,8 +2649,43 @@ function Relatorios(){
   const teamList=MJC_TEAMS.map(t=>[t,jovens.filter(j=>j.mjc===t).length]);
   const maxTeam=Math.max(1,...teamList.map(x=>x[1]));
 
+  const [modal,setModal]=useState(null); // {title,subtitle,pessoas} | null
+  const abrirPorInstrumento=inst=>setModal({
+    title:"Músicos de "+inst, subtitle:instCount[inst]+" músico"+(instCount[inst]>1?"s":""),
+    pessoas: musicos.filter(p=>String(p.inst).split(/,\s*/).map(x=>x.trim()).includes(inst)).map(person=>({person})),
+  });
+  const abrirPorEquipeMjc=t=>setModal({
+    title:t, subtitle:"Equipe atual do MJC",
+    pessoas: jovens.filter(j=>j.mjc===t).map(person=>({person})),
+  });
+
+  // filtro por equipe do EJC + edição — busca no histórico de serviço reportado nas fichas
+  const [eqSel,setEqSel]=useState("");
+  const [edSel,setEdSel]=useState("");
+  const buscarEquipeEjc=()=>{
+    if(!eqSel||!edSel) return;
+    const hist=historicoServicoEjc(jovens,tios).filter(r=>r.eq===eqSel && r.edicao===edSel);
+    hist.sort((a,b)=>papelPrioridade(a)-papelPrioridade(b));
+    setModal({
+      title:eqSel+" — "+edSel, subtitle:hist.length+" pessoa"+(hist.length>1?"s":""),
+      pessoas: hist.map(r=>({person:r.person, papel:papelLabel(r)})),
+    });
+  };
+
   return <div>
-    <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC"/>
+    <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC e do EJC"/>
+
+    <Card title="Buscar por equipe e edição do EJC" subtitle="Quem serviu numa equipe em cada EJC do Califórnia, segundo a ficha de cada um" style={{marginBottom:20}}>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={eqSel} onChange={e=>setEqSel(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",flex:"1 1 200px",minWidth:170}}>
+          <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+        </select>
+        <select value={edSel} onChange={e=>setEdSel(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",flex:"1 1 170px",minWidth:150}}>
+          <option value="">EJC...</option>{EJC_LIST_SIMPLES.map(e=><option key={e}>{e}</option>)}
+        </select>
+        <Button variant="primary" iconLeft={<Icon name="search" size={16}/>} onClick={buscarEquipeEjc} disabled={!eqSel||!edSel}>Ver lista</Button>
+      </div>
+    </Card>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16,marginBottom:20}}>
       <StatTile label="Instrumentos" value={instList.length} icon="guitar" color="var(--cat-terracotta)"/>
@@ -2607,16 +2697,25 @@ function Relatorios(){
         {instList.length===0
           ? <div style={{padding:"30px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum músico cadastrado.</div>
           : <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              {instList.map(([inst,n],i)=><BarRow key={inst} label={inst} value={n} max={maxInst} color={CAT_PALETTE[i%CAT_PALETTE.length]} icon="music"/>)}
+              {instList.map(([inst,n],i)=>(
+                <button key={inst} onClick={()=>abrirPorInstrumento(inst)} title={"Ver músicos de "+inst} style={{border:"none",background:"transparent",padding:0,cursor:"pointer",textAlign:"left",font:"inherit",color:"inherit"}}>
+                  <BarRow label={inst} value={n} max={maxInst} color={CAT_PALETTE[i%CAT_PALETTE.length]} icon="music"/>
+                </button>
+              ))}
             </div>}
       </Card>
 
       <Card title="Pessoas por equipe do MJC" subtitle={jovens.length+" jovens"}>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {teamList.map(([t,n])=><BarRow key={t} label={t} value={n} max={maxTeam} color={MJC_COLOR[t]} icon={MJC_ICON[t]}/>)}
+          {teamList.map(([t,n])=>(
+            <button key={t} onClick={()=>abrirPorEquipeMjc(t)} title={"Ver quem está em "+t} style={{border:"none",background:"transparent",padding:0,cursor:"pointer",textAlign:"left",font:"inherit",color:"inherit"}}>
+              <BarRow label={t} value={n} max={maxTeam} color={MJC_COLOR[t]} icon={MJC_ICON[t]}/>
+            </button>
+          ))}
         </div>
       </Card>
     </div>
+    {modal && <PessoasListModal {...modal} onClose={()=>setModal(null)}/>}
   </div>;
 }
 
