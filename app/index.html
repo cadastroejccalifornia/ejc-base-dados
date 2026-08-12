@@ -91,10 +91,6 @@ function SearchInput({ placeholder, value, onChange, autoFocus, minWidth=200, ma
 function Select({ label, value }){
   return <button style={{display:"inline-flex",alignItems:"center",gap:8,borderRadius:99,border:"none",cursor:"pointer",padding:"10px 16px",fontSize:14,fontWeight:600,color:"var(--text)",background:"var(--surface)",boxShadow:"var(--shadow-sm)"}}>{label&&<span style={{color:"var(--text-3)",fontWeight:500}}>{label}</span>}<span>{value}</span><span style={{color:"var(--text-3)",display:"inline-flex",fontSize:15}}><Icon name="chevron-down" size={15}/></span></button>;
 }
-function StatusDot({ active }){
-  return <Badge tone={active?"success":"neutral"} dot>{active?"Ativo":"Inativo"}</Badge>;
-}
-
 /* ---------- domain data ---------- */
 const MJC_TEAMS=["Ficha","Montagem","Finanças","Palestra","Pós"];
 const MJC_ICON={"Ficha":"clipboard-list","Montagem":"layout-grid","Finanças":"wallet","Palestra":"mic","Pós":"sparkles"};
@@ -148,16 +144,16 @@ const useStore=()=>React.useContext(StoreContext);
 
 // ---------- mapeamento: linha do banco <-> forma usada nas telas ----------
 function rowToJovem(r){
-  return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, mjc:r.mjc, ejc:r.ejc, end:r.endereco, inst:r.instrumento, ativo:r.ativo, foto:r.foto, ficha:r.ficha };
+  return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, mjc:r.mjc, ejc:r.ejc, end:r.endereco, inst:r.instrumento, foto:r.foto, ficha:r.ficha };
 }
 function jovemToRow(j){
-  const row={ nome:j.n, telefone:j.tel, mjc:j.mjc, ejc:j.ejc, endereco:j.end, instrumento:j.inst, ativo:j.ativo, foto:j.foto||null, ficha:j.ficha };
+  const row={ nome:j.n, telefone:j.tel, mjc:j.mjc, ejc:j.ejc, endereco:j.end, instrumento:j.inst, foto:j.foto||null, ficha:j.ficha };
   if(j.user_id) row.user_id=j.user_id;
   return row;
 }
-function rowToTio(r){ return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, ejc:r.ejc, end:r.endereco, ativo:r.ativo, foto:r.foto, ficha:r.ficha }; }
+function rowToTio(r){ return { id:r.id, user_id:r.user_id, ts:new Date(r.created_at).getTime(), n:r.nome, tel:r.telefone, ejc:r.ejc, end:r.endereco, foto:r.foto, ficha:r.ficha }; }
 function tioToRow(t){
-  const row={ nome:t.n, telefone:t.tel, ejc:t.ejc, endereco:t.end, ativo:t.ativo, foto:t.foto||null, ficha:t.ficha };
+  const row={ nome:t.n, telefone:t.tel, ejc:t.ejc, endereco:t.end, foto:t.foto||null, ficha:t.ficha };
   if(t.user_id) row.user_id=t.user_id;
   return row;
 }
@@ -177,7 +173,7 @@ function fichaToTioFields(f){
   const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
   return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f };
 }
-function formToTio(f){ return { ativo:true, ...fichaToTioFields(f) }; }
+function formToTio(f){ return fichaToTioFields(f); }
 function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
 function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
@@ -195,8 +191,7 @@ function fichaToFields(f){
   const mjc = f.mjcAtual && f.mjcAtual!=="Não estou em nenhuma" ? f.mjcAtual : "—";
   const ejc = f.fezCalifornia ? (f.anoEjc||"—") : (f.qualEjc||"—");
   const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
-  // regra: só fica "Ativo" quem está numa equipe do MJC
-  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f, ativo: mjc!=="—" };
+  return { n:(f.nome||"").trim()||"Sem nome", tel:f.whats||"—", mjc, ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f };
 }
 // converte a Ficha preenchida numa nova linha da base
 function formToJovem(f){
@@ -408,16 +403,14 @@ function parseNascBR(s){
   if(dia<1||dia>31||mes<1||mes>12) return null;
   return {dia,mes,ano};
 }
-// aniversariantes ativos com data de nascimento válida — jovens (1 data cada) + tios (tia e tio, até 2 datas por casal)
+// aniversariantes com data de nascimento válida — jovens (1 data cada) + tios (tia e tio, até 2 datas por casal)
 function aniversariantes(jovens,tios){
   const out=[];
   (jovens||[]).forEach(j=>{
-    if(!j.ativo) return;
     const p=j.ficha&&parseNascBR(j.ficha.nasc);
     if(p) out.push({person:j, label:j.n, foto:j.foto, dia:p.dia, mes:p.mes, ano:p.ano});
   });
   (tios||[]).forEach(t=>{
-    if(!t.ativo) return;
     const f=t.ficha||{};
     const pTia=parseNascBR(f.tiaNasc);
     if(pTia) out.push({person:t, label:"Tia "+(apelidoOuPrimeiro(f.tiaNome,f.tiaApelido)||"Tia"), foto:t.foto, dia:pTia.dia, mes:pTia.mes, ano:pTia.ano});
@@ -691,8 +684,8 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
   const { jovens, tios } = useStore();
   const [anivOpen,setAnivOpen]=useState(false);
   const ultimos = [...jovens, ...tios].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
-  const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t&&j.ativo).length;return o;},{});
-  const totalAtivos = jovens.filter(j=>j.ativo).length;
+  const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t).length;return o;},{});
+  const totalJovens = jovens.length;
   return <div>
     <Header title="Início" sub="Visão geral da base de dados do MJC"
       right={<><SearchInput placeholder="Buscar pessoa..." maxWidth={360}/>
@@ -721,7 +714,7 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
                   {isTio ? <Tag color="var(--cat-terracotta)">Tios</Tag> : <Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>}
                 </div>
               </div>
-              <StatusDot active={p.ativo}/>
+              <Icon name="chevron-right" size={18}/>
             </div>;
           })}
         </div>
@@ -739,8 +732,8 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario }){
             </div>
           ))}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 6px 0",borderTop:"1px solid var(--hairline)",marginTop:4}}>
-            <span style={{fontSize:13,color:"var(--text-2)",fontWeight:600}}>Total ativos</span>
-            <span style={{fontWeight:800,fontSize:18}}>{totalAtivos}</span>
+            <span style={{fontSize:13,color:"var(--text-2)",fontWeight:600}}>Total de jovens</span>
+            <span style={{fontWeight:800,fontSize:18}}>{totalJovens}</span>
           </div>
         </div>
       </Card>
@@ -762,7 +755,6 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
       {kind==="jovem" && team
         ? <button onClick={onClearTeam} title="Limpar filtro" style={{display:"inline-flex",alignItems:"center",gap:8,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:14,fontWeight:600,padding:"9px 14px",borderRadius:"var(--r-pill)",background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}}><span style={{color:"var(--brand-yellow-soft)",fontWeight:500}}>Equipe:</span> {team} <Icon name="x" size={15}/></button>
         : <Select label="Equipe" value="Todas"/>}
-      <Select label="Status" value="Todos"/>
       <div style={{marginLeft:"auto"}}>
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>{kind==="jovem"?"Adicionar jovem":"Adicionar casal"}</Button>
       </div>
@@ -785,7 +777,6 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,flex:"0 0 auto"}}>
-            <StatusDot active={r.ativo}/>
             <Icon name="chevron-right" size={18}/>
           </div>
         </div>
@@ -1195,7 +1186,7 @@ function exportarFichaPDF(person){
     overline="Ficha do jovem";
     const end=enderecoCompleto(f);
     const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
-    const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu",(f.equipesCalifornia||[]).map(r=>esc((r.ano?r.ano+" — ":"")+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
+    const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu",(f.equipesCalifornia||[]).map(r=>esc(((r.ano||r.ejc)?(r.ano||r.ejc)+" — ":"")+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
     const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(e=>esc(labelServiuFora(e))).join("<br>"),true):"";
     const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
     corpo=[
@@ -1225,7 +1216,7 @@ function exportarFichaPDF(person){
   }
 
   const logo=window.location.origin+"/design_system_unzip/ejc_claude/assets/ejc-logo.png";
-  const sub=[person.mjc&&person.mjc!=="—"?"MJC: "+person.mjc:"",person.ejc&&person.ejc!=="—"?person.ejc:"",person.ativo?"Ativo":"Inativo"].filter(Boolean).map(esc).join(" · ");
+  const sub=[person.mjc&&person.mjc!=="—"?"MJC: "+person.mjc:"",person.ejc&&person.ejc!=="—"?person.ejc:""].filter(Boolean).map(esc).join(" · ");
   const hoje=new Date().toLocaleDateString("pt-BR");
   const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha - ${esc(person.n)}</title>
 <style>
@@ -1272,7 +1263,6 @@ function PersonDetail({ person, onClose, onEdit }){
           <div className="mono-overline">{isTio?"FICHA · TIOS":"FICHA DO JOVEM"}</div>
           <h1 style={{margin:"2px 0 0",fontSize:20,fontWeight:800,letterSpacing:"-.02em",overflowWrap:"anywhere"}}>{person.n}</h1>
         </div>
-        <StatusDot active={person.ativo}/>
         <Button variant="secondary" iconLeft={<Icon name="file-text" size={16}/>} onClick={()=>exportarFichaPDF(person)} title="Exportar ficha em PDF">PDF</Button>
         {onEdit && <Button variant="primary" iconLeft={<Icon name="pencil" size={16}/>} onClick={onEdit}>Editar</Button>}
       </div>
@@ -1369,7 +1359,7 @@ function PersonDetailBody({ person }){
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {f.equipesCalifornia.map((r,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-                  {r.ano && <Badge tone="brand">{r.ano}</Badge>}<span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
+                  {(r.ano||r.ejc) && <Badge tone="brand">{r.ano||r.ejc}</Badge>}<span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
                   {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
                 </div>
               ))}
@@ -1549,6 +1539,15 @@ function maskInstagram(v){
 function toNomeProprio(v){
   return (v||"").trim().replace(/\s+/g," ").toLowerCase().replace(/(^|[\s-])([a-zà-öø-ÿ])/g,(m,sep,ch)=>sep+ch.toUpperCase());
 }
+// padroniza texto livre de EJC/ECC: título-caso + sigla EJC/ECC maiúscula + número convertido pra romano
+// ex: "25 ejc califórnia" -> "XXV EJC Califórnia"; "15º ecc nossa senhora" -> "XV ECC Nossa Senhora"
+function toEjcEccProprio(v){
+  let s=toNomeProprio(v);
+  if(!s) return s;
+  s=s.replace(/\bEjc\b/gi,"EJC").replace(/\bEcc\b/gi,"ECC");
+  s=s.replace(/(\d+)\s*[ºo°]?\s*(EJC|ECC)/i,(m,num,sigla)=>toRoman(parseInt(num,10))+" "+sigla.toUpperCase());
+  return s;
+}
 // padroniza endereço/bairro/cidade: primeira letra maiúscula em cada palavra, MAS conectivos
 // (de/da/do/dos/das/e) ficam minúsculos quando não são a primeira palavra — ex: "Rua das Flores"
 const CONECTIVOS_ENDERECO=new Set(["de","da","do","dos","das","e"]);
@@ -1589,20 +1588,21 @@ function validaCPF(cpf){
 const validaEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e||"").trim());
 const validaTelefone = t => { const d=onlyDigits(t); return d.length===10||d.length===11; };
 
-// redimensiona a imagem no navegador (lado maior = 480px) antes de enviar — poupa dados no celular
+// redimensiona a imagem no navegador (lado maior = 320px) antes de enviar — poupa dados/memória
+// (o maior uso na tela é 84px e no PDF é 66px; 320px já cobre retina/3x com folga)
 function resizeImagem(file){
   return new Promise((resolve,reject)=>{
     const img=new Image();
     const url=URL.createObjectURL(file);
     img.onload=()=>{
-      const max=480;
+      const max=320;
       let {width:w,height:h}=img;
       if(w>h && w>max){ h=Math.round(h*max/w); w=max; } else if(h>=w && h>max){ w=Math.round(w*max/h); h=max; }
       const canvas=document.createElement("canvas");
       canvas.width=w; canvas.height=h;
       canvas.getContext("2d").drawImage(img,0,0,w,h);
       URL.revokeObjectURL(url);
-      canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Não foi possível processar a imagem.")),"image/jpeg",0.85);
+      canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Não foi possível processar a imagem.")),"image/jpeg",0.8);
     };
     img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("Arquivo de imagem inválido.")); };
     img.src=url;
@@ -1745,7 +1745,8 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     setBusy(true);
     // padroniza a caixa dos nomes (Primeira Maiúscula) antes de salvar, mesmo se digitado em CAIXA ALTA
     const fPadronizado={...f, nome:toNomeProprio(f.nome), apelido:toNomeProprio(f.apelido), paiNome:toNomeProprio(f.paiNome), maeNome:toNomeProprio(f.maeNome), casalTio:toNomeProprio(f.casalTio),
-      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade)};
+      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade),
+      email:(f.email||"").trim().toLowerCase(), qualEjc:toEjcEccProprio(f.qualEjc)};
     await (onSave&&onSave(fPadronizado));
     setBusy(false);
   };
@@ -1864,8 +1865,8 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
             <Input value={f.qualEjc||""} onChange={e=>set("qualEjc",e.target.value)} placeholder="X EJC Padre Eustáquio"/>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipe que serviu no Califórnia" hint="Adicione a equipe (ou equipes) em que serviu">
-              <RepeatEquipeSimples value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)}/>
+            <Field label="Equipe que serviu no Califórnia" hint="Adicione o EJC do Califórnia, a equipe e se foi coordenação">
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} eccOptions={EJC_LIST_SIMPLES}/>
             </Field>
           </div>
           <label style={{display:"inline-flex",alignItems:"center",gap:9,fontSize:14,marginTop:16,cursor:"pointer"}}>
@@ -1962,7 +1963,8 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     }
     setBusy(true);
     const fPadronizado={...f, tiaNome:toNomeProprio(f.tiaNome), tioNome:toNomeProprio(f.tioNome), tiaApelido:toNomeProprio(f.tiaApelido), tioApelido:toNomeProprio(f.tioApelido),
-      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade)};
+      endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade),
+      tiaEmail:(f.tiaEmail||"").trim().toLowerCase(), tioEmail:(f.tioEmail||"").trim().toLowerCase(), qualEcc:toEjcEccProprio(f.qualEcc)};
     await (onSave&&onSave(fPadronizado));
     setBusy(false);
   };
@@ -2204,34 +2206,6 @@ function RepeatServiuFora({ value, onChange }){
       </div>
       <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={add}>Adicionar</Button>
     </div>
-  </div>;
-}
-
-// lista simples de equipes (sem ano) — usada no "não fez Califórnia" do jovem e nas duas
-// listas de equipe dos tios. `max` limita quantas entradas podem ser adicionadas.
-function RepeatEquipeSimples({ value, onChange, max }){
-  const [eq,setEq]=useState("");
-  const list=value||[];
-  const add=()=>{ if(!eq) return; onChange([...list,{eq}]); setEq(""); };
-  const podeAdd = max==null || list.length<max;
-  const selStyle={border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 12px",fontSize:13,fontFamily:"var(--font-sans)",outline:"none",minWidth:170};
-  return <div>
-    {list.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-      {list.map((r,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-          <span style={{flex:1,fontWeight:600,fontSize:14}}>{r.eq}</span>
-          <IconButton label="Remover" size={30} variant="soft" onClick={()=>onChange(list.filter((_,j)=>j!==i))}><Icon name="x" size={15}/></IconButton>
-        </div>
-      ))}
-    </div>}
-    {podeAdd
-      ? <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
-            <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
-          </select>
-          <Button variant="secondary" iconLeft={<Icon name="plus" size={15}/>} onClick={add}>Adicionar</Button>
-        </div>
-      : <p style={{fontSize:12,color:"var(--text-3)"}}>Máximo de {max} equipe{max>1?"s":""} atingido.</p>}
   </div>;
 }
 
@@ -2533,38 +2507,35 @@ const CAT_PALETTE=["var(--cat-terracotta)","var(--cat-plum)","var(--cat-blue)","
 
 function Relatorios(){
   const { jovens, tios } = useStore();
-  const ativosMJC = jovens.filter(j=>j.ativo); // só jovens têm equipe do MJC
-  const ativosTodos = [...jovens, ...tios].filter(p=>p.ativo); // pessoas ativas em geral (inclui casais de tios)
-  const musicos = ativosTodos.filter(p=>p.inst);
+  const todos = [...jovens, ...tios]; // inclui casais de tios
+  const musicos = todos.filter(p=>p.inst);
   // músicos por instrumento (inst pode ter vários separados por vírgula)
   const instCount={};
   musicos.forEach(m=>String(m.inst).split(/,\s*/).forEach(i=>{const k=i.trim();if(k)instCount[k]=(instCount[k]||0)+1;}));
   const instList=Object.entries(instCount).sort((a,b)=>b[1]-a[1]);
   const maxInst=Math.max(1,...instList.map(x=>x[1]));
-  // pessoas ativas por equipe do MJC
-  const teamList=MJC_TEAMS.map(t=>[t,ativosMJC.filter(j=>j.mjc===t).length]);
+  // pessoas por equipe do MJC
+  const teamList=MJC_TEAMS.map(t=>[t,jovens.filter(j=>j.mjc===t).length]);
   const maxTeam=Math.max(1,...teamList.map(x=>x[1]));
 
   return <div>
     <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC"/>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16,marginBottom:20}}>
-      <StatTile label="Pessoas ativas" value={ativosTodos.length} icon="users" color="var(--cat-blue)"/>
-      <StatTile label="Músicos ativos" value={musicos.length} icon="music" color="var(--cat-plum)"/>
       <StatTile label="Instrumentos" value={instList.length} icon="guitar" color="var(--cat-terracotta)"/>
       <StatTile label="Equipes do MJC" value={MJC_TEAMS.length} icon="layout-grid" color="var(--cat-olive)"/>
     </div>
 
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
-      <Card title="Músicos ativos por instrumento" subtitle={musicos.length+" músicos ativos (jovens e tios)"}>
+      <Card title="Músicos por instrumento" subtitle={musicos.length+" músicos (jovens e tios)"}>
         {instList.length===0
-          ? <div style={{padding:"30px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum músico ativo cadastrado.</div>
+          ? <div style={{padding:"30px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum músico cadastrado.</div>
           : <div style={{display:"flex",flexDirection:"column",gap:16}}>
               {instList.map(([inst,n],i)=><BarRow key={inst} label={inst} value={n} max={maxInst} color={CAT_PALETTE[i%CAT_PALETTE.length]} icon="music"/>)}
             </div>}
       </Card>
 
-      <Card title="Pessoas ativas por equipe do MJC" subtitle={ativosMJC.length+" pessoas ativas"}>
+      <Card title="Pessoas por equipe do MJC" subtitle={jovens.length+" jovens"}>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {teamList.map(([t,n])=><BarRow key={t} label={t} value={n} max={maxTeam} color={MJC_COLOR[t]} icon={MJC_ICON[t]}/>)}
         </div>
