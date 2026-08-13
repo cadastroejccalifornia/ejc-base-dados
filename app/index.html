@@ -1311,8 +1311,11 @@ function CorteBloco({ titulo, itens, onRemover }){
 function MontagemSheet({ montagem, onBack }){
   const { jovens, tios, setMontagemCell, setVisibilidadeMontagem, addRowSection, removeRowSection, moverParaCorte, removerDoCorte } = useStore();
   useLucide();
-  const [tab,setTab]=useState(MONTAGEM_TABS[0]);
-  const [mostrarCorte,setMostrarCorte]=useState(false);
+  // guarda a aba (equipe) e o modo Corte/Recusa pra sobreviver a um F5
+  const [tab,setTabRaw]=useState(()=>localStorage.getItem("ejc.montagemTab")||MONTAGEM_TABS[0]);
+  const setTab=t=>{ setTabRaw(t); localStorage.setItem("ejc.montagemTab",t); };
+  const [mostrarCorte,setMostrarCorteRaw]=useState(()=>localStorage.getItem("ejc.montagemCorte")==="1");
+  const setMostrarCorte=v=>{ setMostrarCorteRaw(v); localStorage.setItem("ejc.montagemCorte",v?"1":"0"); };
   const [exportOpen,setExportOpen]=useState(false);
   const [aplicarEjcOpen,setAplicarEjcOpen]=useState(false);
   const [busyVisib,setBusyVisib]=useState(false);
@@ -3358,7 +3361,7 @@ const NAV=[
 // e-mails com acesso à aba Configurações (senhas + dirigentes) — exclusivo do admin dono
 const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
 function App({ user, onLogout }){
-  const { jovens, addJovem, updateJovem, addTio, updateTio, removeJovem, removeTio } = useStore();
+  const { jovens, tios, addJovem, updateJovem, addTio, updateTio, removeJovem, removeTio } = useStore();
   const meuJovem = jovens.find(j=>j.user_id===user.id) || null;
   // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
   // Fica sempre dentro do menu do avatar (RailAvatarMenu), tanto no celular quanto no desktop
@@ -3371,9 +3374,27 @@ function App({ user, onLogout }){
   const [senhaOpen,setSenhaOpen]=useState(false);
   useLucide();
   const isMobile=useIsMobile();
-  const [person,setPerson]=useState(null);
+  const [person,setPersonRaw]=useState(null);
+  // guarda a ficha aberta (id+tipo) e restaura assim que jovens/tios carregarem do banco
+  const setPerson=p=>{
+    setPersonRaw(p);
+    if(p) localStorage.setItem("ejc.fichaAberta", JSON.stringify({id:p.id, kind:p.mjc===undefined?"tio":"jovem"}));
+    else localStorage.removeItem("ejc.fichaAberta");
+  };
+  useEffect(()=>{
+    if(person) return;
+    const raw=localStorage.getItem("ejc.fichaAberta");
+    if(!raw) return;
+    try{
+      const {id,kind}=JSON.parse(raw);
+      const achado = kind==="tio" ? tios.find(t=>t.id===id) : jovens.find(j=>j.id===id);
+      if(achado) setPersonRaw(achado);
+    }catch(e){}
+  },[jovens,tios]);
   const [editPerson,setEditPerson]=useState(null);
-  const [teamFilter,setTeamFilter]=useState(null);
+  // guarda o filtro de equipe do MJC pra sobreviver a um F5
+  const [teamFilter,setTeamFilterRaw]=useState(()=>localStorage.getItem("ejc.teamFilter")||null);
+  const setTeamFilter=v=>{ setTeamFilterRaw(v); if(v) localStorage.setItem("ejc.teamFilter",v); else localStorage.removeItem("ejc.teamFilter"); };
   const openCadChooser=()=>setChooserOpen(true); // Início: pergunta o tipo antes
   const openCadJovem=()=>setCadKind("jovem"); // tela Jovens: já sabe o tipo
   const openCadTios=()=>setCadKind("tios"); // tela Tios: já sabe o tipo
