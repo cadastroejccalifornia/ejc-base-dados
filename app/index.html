@@ -405,6 +405,11 @@ function StoreProvider({ user, children }){
       if(error) return null;
       const row=rowToMontagem(data); setMontagens(l=>[row,...l]); return row;
     },
+    removeMontagem: async (id)=>{
+      const { error } = await supabase.from("montagens").delete().eq("id",id);
+      if(!error) setMontagens(l=>l.filter(m=>m.id!==id));
+      return { error };
+    },
     setVisibilidadeMontagem: async (montId,visib)=>{
       const { data, error } = await supabase.from("montagens").update({visibilidade:visib}).eq("id",montId).select().single();
       if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
@@ -1504,11 +1509,13 @@ function NovaMontagemModal({ onClose, onCreate }){
 }
 
 function Montagem(){
-  const { montagens, addMontagem, loading } = useStore();
+  const { montagens, addMontagem, removeMontagem, loading } = useStore();
   // guarda qual montagem estava aberta pra sobreviver a um F5
   const [openId,setOpenIdRaw]=useState(()=>localStorage.getItem("ejc.montagemAberta")||null);
   const setOpenId=id=>{ setOpenIdRaw(id); if(id) localStorage.setItem("ejc.montagemAberta",id); else localStorage.removeItem("ejc.montagemAberta"); };
   const [modal,setModal]=useState(false);
+  const [confirmarExcluir,setConfirmarExcluir]=useState(null); // montagem a excluir
+  const [busyExcluir,setBusyExcluir]=useState(false);
   const openMont = montagens.find(m=>m.id===openId);
 
   if(openId && !openMont && loading) return null; // ainda carregando os dados — evita "piscar" a lista vazia
@@ -1525,16 +1532,31 @@ function Montagem(){
         <div><div style={{fontSize:16,fontWeight:700,color:"var(--brand-brown)"}}>Fazer montagem</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>Criar nova organização de equipes</div></div>
       </button>
       {montagens.map((m)=>{const n=countFilled(m);return(
-        <button key={m.id} onClick={()=>setOpenId(m.id)} style={{textAlign:"left",cursor:"pointer",border:"none",background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:150,boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",justifyContent:"space-between",fontFamily:"var(--font-sans)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <span style={{width:46,height:46,borderRadius:99,background:"var(--cat-terracotta)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="layout-grid" size={20}/></span>
-            <Badge tone={m.visib==="Só o proprietário"?"neutral":"success"} dot>{m.visib==="Só o proprietário"?"Privada":"Compartilhada"}</Badge>
-          </div>
-          <div><div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{m.nome}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>{m.ejc?(m.ejc+" · "):""}por {m.autor}{n>0?" · "+n+" alocados":""}</div></div>
-        </button>
+        <div key={m.id} style={{position:"relative"}}>
+          <button onClick={()=>setOpenId(m.id)} style={{width:"100%",textAlign:"left",cursor:"pointer",border:"none",background:"var(--surface)",borderRadius:"var(--r-lg)",padding:"22px",minHeight:150,boxShadow:"var(--shadow-sm)",display:"flex",flexDirection:"column",justifyContent:"space-between",fontFamily:"var(--font-sans)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",paddingRight:34}}>
+              <span style={{width:46,height:46,borderRadius:99,background:"var(--cat-terracotta)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="layout-grid" size={20}/></span>
+              <Badge tone={m.visib==="Só o proprietário"?"neutral":"success"} dot>{m.visib==="Só o proprietário"?"Privada":"Compartilhada"}</Badge>
+            </div>
+            <div><div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{m.nome}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>{m.ejc?(m.ejc+" · "):""}por {m.autor}{n>0?" · "+n+" alocados":""}</div></div>
+          </button>
+          <span style={{position:"absolute",top:14,right:14}}>
+            <IconButton label="Excluir montagem" size={30} variant="soft" onClick={()=>setConfirmarExcluir(m)}><Icon name="trash-2" size={14}/></IconButton>
+          </span>
+        </div>
       );})}
     </div>
     {modal && <NovaMontagemModal onClose={()=>setModal(false)} onCreate={async m=>{const nm=await addMontagem(m);setModal(false);if(nm)setOpenId(nm.id);}}/>}
+    {confirmarExcluir && <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70}} onClick={()=>!busyExcluir&&setConfirmarExcluir(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:420,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+        <h3 style={{margin:"0 0 6px",fontSize:19,fontWeight:800}}>Excluir montagem</h3>
+        <p style={{margin:"0 0 22px",fontSize:14,color:"var(--text-2)"}}>Tem certeza que quer excluir <b>{confirmarExcluir.nome}</b>? Toda a planilha (quem estava alocado em cada equipe) some junto. Essa ação não pode ser desfeita — se você já rodou "Adicionar EJC à ficha dos integrantes", as fichas já atualizadas não são afetadas por esta exclusão.</p>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Button variant="ghost" onClick={()=>setConfirmarExcluir(null)} disabled={busyExcluir}>Cancelar</Button>
+          <Button variant="primary" onClick={async ()=>{ setBusyExcluir(true); await removeMontagem(confirmarExcluir.id); setBusyExcluir(false); setConfirmarExcluir(null); }} disabled={busyExcluir} style={{background:"var(--brand-red)",opacity:busyExcluir?.7:1}} iconLeft={<Icon name="trash-2" size={15}/>}>{busyExcluir?"Excluindo...":"Excluir"}</Button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
