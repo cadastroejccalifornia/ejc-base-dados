@@ -915,18 +915,28 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario, onGoJovens
    ====================================================================== */
 function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onClearTeam, onSetTeam }){
   const [q,setQ]=useState("");
+  const [origem,setOrigem]=useState(""); // "" | "fora" — filtro de quem é de fora do Califórnia
   const team = teamFilter||null;
-  const list=rows.filter(r=>r.n.toLowerCase().includes(q.toLowerCase()) && (!team || r.mjc===team));
+  const qNorm=q.toLowerCase();
+  const list=rows.filter(r=>
+    (r.n.toLowerCase().includes(qNorm) || (r.ejc||"").toLowerCase().includes(qNorm))
+    && (!team || r.mjc===team)
+    && (!origem || (r.ficha && r.ficha.fezCalifornia===false))
+  );
   const selectStyle={display:"inline-flex",alignItems:"center",borderRadius:99,border:"none",cursor:"pointer",padding:"10px 16px",fontSize:14,fontWeight:600,color:"var(--text)",background:"var(--surface)",boxShadow:"var(--shadow-sm)",fontFamily:"var(--font-sans)",outline:"none"};
   return <Card pad="0" style={{overflow:"hidden"}}>
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",flexWrap:"wrap"}}>
-      <SearchInput placeholder={kind==="jovem"?"Buscar jovem...":"Buscar casal..."} value={q} onChange={setQ} maxWidth={340}/>
+      <SearchInput placeholder={kind==="jovem"?"Buscar por nome ou EJC que fez...":"Buscar por nome ou ECC que fez..."} value={q} onChange={setQ} maxWidth={340}/>
       {kind==="jovem" && (team
         ? <button onClick={onClearTeam} title="Limpar filtro" style={{display:"inline-flex",alignItems:"center",gap:8,border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:14,fontWeight:600,padding:"9px 14px",borderRadius:"var(--r-pill)",background:"var(--brand-brown)",color:"var(--on-brand)",boxShadow:"var(--shadow-sm)"}}><span style={{color:"var(--brand-yellow-soft)",fontWeight:500}}>Equipe:</span> {team} <Icon name="x" size={15}/></button>
         : <select value="" onChange={e=>{ if(e.target.value) onSetTeam&&onSetTeam(e.target.value); }} style={selectStyle}>
             <option value="">Equipe: Todas</option>
             {MJC_TEAMS.map(t=><option key={t} value={t}>{t}</option>)}
           </select>)}
+      <select value={origem} onChange={e=>setOrigem(e.target.value)} style={selectStyle}>
+        <option value="">Todos</option>
+        <option value="fora">De fora do Califórnia</option>
+      </select>
       <div style={{marginLeft:"auto"}}>
         <Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={onNovo}>{kind==="jovem"?"Adicionar jovem":"Adicionar casal"}</Button>
       </div>
@@ -954,7 +964,7 @@ function PeopleTable({ rows, onNovo, kind="jovem", onOpenPerson, teamFilter, onC
         </div>
       ))}
     </div>
-    {list.length===0 && <div style={{padding:"40px",textAlign:"center",color:"var(--text-3)"}}>{q?('Nenhum resultado para "'+q+'".'):team?("Ninguém na equipe "+team+" ainda."):"Nenhum cadastro ainda."}</div>}
+    {list.length===0 && <div style={{padding:"40px",textAlign:"center",color:"var(--text-3)"}}>{q?('Nenhum resultado para "'+q+'".'):team?("Ninguém na equipe "+team+" ainda."):origem?"Ninguém de fora cadastrado ainda.":"Nenhum cadastro ainda."}</div>}
   </Card>;
 }
 function Jovens({ onNovo, onOpenPerson, teamFilter, onClearTeam, onSetTeam }){
