@@ -117,6 +117,22 @@ function toRoman(num){
   const vals=[[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
   let s=""; for(const [v,r] of vals){ while(num>=v){ s+=r; num-=v; } } return s;
 }
+// caminho inverso: número romano -> inteiro (usado pra comparar edições entre si, ex: XXVIII < XXXI)
+function romanToInt(s){
+  const map={I:1,V:5,X:10,L:50,C:100,D:500,M:1000};
+  const str=(s||"").toUpperCase();
+  let total=0;
+  for(let i=0;i<str.length;i++){
+    const cur=map[str[i]]||0, next=map[str[i+1]]||0;
+    total += cur<next ? -cur : cur;
+  }
+  return total||null;
+}
+// número da edição a partir de qualquer formato usado nas fichas: "XXVIII EJC (2023)", "XXVIII EJC", "XXIX ECC"...
+function numeroEdicao(label){
+  const m=/^([IVXLCDM]+)\s/i.exec((label||"").trim());
+  return m ? romanToInt(m[1]) : null;
+}
 // XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX) — ECC é o encontro dos tios,
 // numeração própria e diferente do EJC (por isso não vai até XXXI como o EJC_YEARS)
 const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
@@ -1025,6 +1041,135 @@ function rowsForSection(montagem, tab, sec){
   return custom || Array.from({length:sec.count},(_,i)=>sec.label+"-"+i);
 }
 
+/* ======================================================================
+   MONTAGEM — "Adicionar EJC à ficha dos integrantes" (ação pós-evento)
+   ====================================================================== */
+// monta o plano (sem gravar nada ainda): quem serviu em qual equipe/função + quem não serviu
+// (cortados da montagem + veteranos de edições anteriores que não estão nessa montagem)
+function calcularPlanoEjc(montagem, jovens, tios){
+  const numEd = numeroEdicao(montagem.ejc);
+  const servidores=[]; // {person,isTio,eq,coord}
+  const vistos=new Set();
+  MONTAGEM_TABS.forEach(tabName=>{
+    const cell=(montagem.cells&&montagem.cells[tabName])||{};
+    const secs=estruturaDaEquipe(tabName);
+    Object.keys(cell).forEach(rowKey=>{
+      const person=cell[rowKey]; if(!person||vistos.has(person.id)) return;
+      vistos.add(person.id);
+      const secLabel=rowKey.slice(0,rowKey.lastIndexOf("-"));
+      const sec=secs.find(s=>s.label===secLabel);
+      const coord = !!(sec && /coordenador/i.test(sec.label));
+      servidores.push({ person, isTio: person.mjc===undefined, eq: tabName, coord });
+    });
+  });
+
+  // veteranos que já participaram/serviram numa edição anterior e não estão nessa montagem → "não serviu"
+  const naoServiram=[];
+  jovens.forEach(j=>{
+    if(vistos.has(j.id)) return;
+    const f=j.ficha||{};
+    const veterano = (f.fezCalifornia===true && numeroEdicao(f.anoEjc)<numEd)
+      || (f.equipesCalifornia||[]).some(r=>numeroEdicao(r.ano||r.ejc)<numEd);
+    if(!veterano) return;
+    naoServiram.push({ person:j, isTio:false });
+  });
+  tios.forEach(t=>{
+    if(vistos.has(t.id)) return;
+    const f=t.ficha||{};
+    const historico=[...(f.equipesEjc||[]),...(f.equipesCalifornia||[])];
+    if(!historico.some(r=>numeroEdicao(r.ejc)<numEd)) return;
+    naoServiram.push({ person:t, isTio:true });
+  });
+
+  return { numEd, servidores, naoServiram };
+}
+// aplica de fato: escreve nas fichas (upsert — se já existir uma entrada dessa edição, substitui, então
+// dá pra rodar de novo sem duplicar). anoFull = "XXXI EJC (2026)" (jovem que fez no Califórnia); ejcSimples = "XXXI EJC"
+function novaListaEquipes(listaAtual, numEd, novaEntrada){
+  return [...(listaAtual||[]).filter(r=>numeroEdicao(r.ano||r.ejc)!==numEd), novaEntrada];
+}
+async function aplicarPlanoEjc(plano, montagem, anoFull, updateJovem, updateTio, onProgresso){
+  const todos=[...plano.servidores.map(s=>({...s,naoServiu:false})), ...plano.naoServiram.map(s=>({...s,naoServiu:true}))];
+  let feitos=0;
+  for(const item of todos){
+    const { person, isTio, eq, coord, naoServiu } = item;
+    const f=person.ficha||{};
+    if(isTio){
+      const campo = f.fezCalifornia===true ? "equipesEjc" : "equipesCalifornia";
+      const entrada = naoServiu ? {ejc:montagem.ejc, eq:"Não serviu"} : {ejc:montagem.ejc, eq, coord};
+      const novaLista = novaListaEquipes(f[campo], plano.numEd, entrada);
+      await updateTio(person.id, fichaToTioFields({...f,[campo]:novaLista}));
+    } else {
+      const entrada = f.fezCalifornia===true
+        ? (naoServiu ? {ano:anoFull, eq:"Não serviu"} : {ano:anoFull, eq, coord})
+        : (naoServiu ? {ejc:montagem.ejc, eq:"Não serviu"} : {ejc:montagem.ejc, eq, coord});
+      const novaLista = novaListaEquipes(f.equipesCalifornia, plano.numEd, entrada);
+      await updateJovem(person.id, fichaToFields({...f, equipesCalifornia:novaLista}));
+    }
+    feitos++; onProgresso&&onProgresso(feitos,todos.length);
+  }
+  return todos.length;
+}
+function AplicarEjcModal({ montagem, onClose }){
+  const { jovens, tios, updateJovem, updateTio, ejcYears } = useStore();
+  const [fase,setFase]=useState("revisar"); // revisar | aplicando | pronto
+  const [progresso,setProgresso]=useState({feitos:0,total:0});
+  useLucide();
+  const plano = calcularPlanoEjc(montagem, jovens, tios);
+  const anoFull = ejcYears.find(y=>y.startsWith(montagem.ejc+" ("))||montagem.ejc;
+  const confirmar=async ()=>{
+    setFase("aplicando");
+    await aplicarPlanoEjc(plano, montagem, anoFull, updateJovem, updateTio, (feitos,total)=>setProgresso({feitos,total}));
+    setFase("pronto");
+  };
+  const linha=(item,i)=>(
+    <div key={(item.person.id||i)} style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"8px 12px"}}>
+      <Avatar src={item.person.foto} name={item.person.n} size={30}/>
+      <span style={{flex:1,fontWeight:600,fontSize:13.5,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.person.n}</span>
+      {item.eq && <Tag color="var(--cat-blue)">{item.eq}{item.coord?" · Coord.":""}</Tag>}
+    </div>
+  );
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:80,padding:16}} onClick={()=>fase!=="aplicando"&&onClose()}>
+    <div onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+      {fase==="pronto" ? (
+        <>
+          <h3 style={{margin:"0 0 8px",fontSize:20,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Icon name="check-circle-2" size={22} style={{color:"var(--brand-green,#3FA34D)"}}/>Pronto!</h3>
+          <p style={{margin:"0 0 22px",fontSize:14,color:"var(--text-2)"}}>{plano.servidores.length+plano.naoServiram.length} fichas foram atualizadas com {montagem.ejc}.</p>
+          <div style={{display:"flex",justifyContent:"flex-end"}}><Button variant="primary" onClick={onClose}>Fechar</Button></div>
+        </>
+      ) : fase==="aplicando" ? (
+        <>
+          <h3 style={{margin:"0 0 8px",fontSize:20,fontWeight:800}}>Atualizando fichas...</h3>
+          <p style={{margin:"0 0 10px",fontSize:14,color:"var(--text-2)"}}>{progresso.feitos} de {progresso.total} — não feche esta janela.</p>
+          <div style={{height:9,borderRadius:99,background:"var(--surface-3)",overflow:"hidden"}}>
+            <div style={{width:(progresso.total?Math.round(progresso.feitos/progresso.total*100):0)+"%",height:"100%",background:"var(--brand-brown)",transition:"width .2s"}}/>
+          </div>
+        </>
+      ) : (
+        <>
+          <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Adicionar {montagem.ejc} à ficha dos integrantes</h3>
+          <p style={{margin:"0 0 18px",fontSize:14,color:"var(--text-2)"}}>Confira antes de confirmar — essa ação edita a ficha de muita gente de uma vez. Só faça isso depois do encontro já ter acontecido.</p>
+          {!montagem.ejc && <div style={{fontSize:13,color:"var(--brand-red)",fontWeight:600,marginBottom:14}}>Essa montagem não tem um EJC definido — edite a montagem antes de continuar.</div>}
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Vão receber "serviu" — {plano.servidores.length}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16,maxHeight:180,overflow:"auto"}}>
+            {plano.servidores.length===0 && <div style={{fontSize:13,color:"var(--text-3)"}}>Ninguém alocado na montagem ainda.</div>}
+            {plano.servidores.map(linha)}
+          </div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Vão receber "não serviu" — {plano.naoServiram.length}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20,maxHeight:180,overflow:"auto"}}>
+            {plano.naoServiram.length===0 && <div style={{fontSize:13,color:"var(--text-3)"}}>Ninguém nessa situação.</div>}
+            {plano.naoServiram.map(linha)}
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+            <Button variant="primary" onClick={confirmar} disabled={!montagem.ejc} style={{opacity:!montagem.ejc?.5:1,background:"var(--brand-red)"}} iconLeft={<Icon name="alert-triangle" size={16}/>}>Confirmar e atualizar {plano.servidores.length+plano.naoServiram.length} fichas</Button>
+          </div>
+        </>
+      )}
+    </div>
+  </div>;
+}
+
 function AddPersonCell({ pool, onPick }){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
@@ -1168,6 +1313,7 @@ function MontagemSheet({ montagem, onBack }){
   const [tab,setTab]=useState(MONTAGEM_TABS[0]);
   const [mostrarCorte,setMostrarCorte]=useState(false);
   const [exportOpen,setExportOpen]=useState(false);
+  const [aplicarEjcOpen,setAplicarEjcOpen]=useState(false);
   const [busyVisib,setBusyVisib]=useState(false);
   const tornarPublica=async ()=>{ setBusyVisib(true); await setVisibilidadeMontagem(montagem.id,"Todos com acesso"); setBusyVisib(false); };
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
@@ -1235,10 +1381,12 @@ function MontagemSheet({ montagem, onBack }){
       sub={(montagem.ejc?(montagem.ejc+" · "):"")+"Responsável: "+montagem.autor+" · "+montagem.visib}
       right={<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {montagem.visib==="Só o proprietário" && <Button variant="secondary" iconLeft={<Icon name="globe" size={16}/>} onClick={tornarPublica} disabled={busyVisib} style={{opacity:busyVisib?.7:1}}>{busyVisib?"Alterando...":"Tornar pública"}</Button>}
+        <Button variant="secondary" iconLeft={<Icon name="graduation-cap" size={16}/>} onClick={()=>setAplicarEjcOpen(true)}>Adicionar EJC à ficha dos integrantes</Button>
         <Button variant="primary" iconLeft={<Icon name="download" size={16}/>} onClick={()=>setExportOpen(true)}>Exportar</Button>
         <Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>
       </div>}/>
     {exportOpen && <ExportarModal montagem={montagem} tabAtual={tab} onClose={()=>setExportOpen(false)}/>}
+    {aplicarEjcOpen && <AplicarEjcModal montagem={montagem} onClose={()=>setAplicarEjcOpen(false)}/>}
 
     {/* Abas de equipes (estilo Excel) + Corte/Recusa separado (não é uma equipe de verdade) */}
     <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:14,alignItems:"center"}}>

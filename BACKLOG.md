@@ -33,7 +33,7 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 ## Bloco F — EJCs (edições) ✅ (2026-08-12)
 - [x] **F1.** Opção de cadastrar novos EJCs no banco (hoje a lista vai só até XXXI/2026). *(a lista de edições, que era uma lista fixa no código, virou uma tabela `ejc_edicoes` no banco; novo card "Edições do EJC" em Configurações — botão "Adicionar próximo EJC" já sugere o próximo número, só pede o ano. Todos os formulários (ficha do jovem, ficha dos tios, filtro de Relatórios) agora leem a lista do banco. **Precisa rodar** [supabase_migration_ejc_edicoes.sql](supabase_migration_ejc_edicoes.sql) — sem ela o app usa a lista antiga como reserva (nada quebra, só não dá pra adicionar edição nova ainda))*
 
-## Bloco G — Montagem (bloco maior, dividido em sub-etapas)
+## Bloco G — Montagem (bloco maior, dividido em sub-etapas) ✅ (2026-08-12 — G1 a G6 completos)
 - [x] **G1.** Trocar bolinha vermelha ao lado do nome por um X vermelho. *(2026-08-12: botão de remover da equipe agora é vermelho sólido com X branco, bem mais visível que o "bolinha" antigo)*
 - [x] **G2.** Ao criar montagem: escolher se é pública ou privada (do criador); privada pode ser tornada pública depois. *(2026-08-12: a escolha na criação já existia; adicionado botão "Tornar pública" na tela da montagem, aparece só quando ela está "Só o proprietário". **Caveat encontrado:** hoje o RLS do banco deixa QUALQUER dirigente ver/editar qualquer montagem, então "Só o proprietário" ainda é só um rótulo visual, não uma restrição de acesso de verdade — não mexi nisso agora por ser mudança de banco maior, mas fica registrado)*
 - [x] **G3.** Ao criar montagem: escolher a qual EJC ela pertence. *(2026-08-12: select no modal de criação + mostrado no card da lista e no cabeçalho da planilha. **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql))*
@@ -57,9 +57,12 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
   - Opção de remover alguém da lista de Corte/Recusa (engano ou retorno à montagem). *(botão de remover em cada linha do Corte/Recusa — só tira da lista, não recoloca automaticamente em nenhuma equipe)*
   - Não aparece como aba junto das equipes normais — é um botão separado (ícone de tesoura, cor vermelha) ao lado das abas, com um separador visual.
   - **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql) (nova versão, com a coluna `corte`).
-- [ ] **G6.** "Adicionar EJC à ficha dos integrantes" — ação pós-evento, com tela de confirmação (edita muitas fichas de uma vez):
+- [x] **G6.** "Adicionar EJC à ficha dos integrantes" — ação pós-evento, com tela de confirmação (edita muitas fichas de uma vez). ✅ 2026-08-12
   - Para quem ficou na montagem: adiciona na ficha "EJC (ano) + Equipe + coordenou ou não", no mesmo formato usado hoje.
   - Para quem não serviu (Corte/Recusa) e para todo mundo que já fez EJC anterior (edições passadas) sem ter servido nesta: adicionar "EJC (ano) — não serviu" (ou nomenclatura já usada hoje para isso).
+  - **Como ficou:** botão "Adicionar EJC à ficha dos integrantes" no topo da montagem (só funciona se a montagem tiver um EJC escolhido — G3). Abre uma tela de **revisão antes de gravar**: mostra a lista de quem vai receber "serviu em [equipe]" (todo mundo alocado em alguma linha, com a função que constou) e a lista de quem vai receber "não serviu" (quem está no Corte/Recusa dessa montagem + qualquer jovem/tio que já participou/serviu numa edição anterior e não está nessa montagem). Só depois de conferir as duas listas é que confirma e a gravação roda com barra de progresso.
+  - **Detalhe técnico importante:** a ação é segura de rodar de novo (upsert) — se a pessoa já tiver uma entrada dessa mesma edição na ficha, ela é substituída, não duplicada.
+  - **Limite assumido:** "já fez EJC anterior" considera jovens que fizeram o EJC no Califórnia (campo próprio) OU qualquer jovem/tio que já tenha uma entrada de serviço numa edição mais antiga. Jovens "de fora" que nunca serviram nem fizeram Califórnia não entram nessa lista automática (não tem como saber que "deveriam" ter servido). Se isso não bater com o que você esperava, me avisa que eu ajusto o critério.
 
 ---
 **Convenção de commits:** referenciar o número do item, ex: `git commit -m "A2: remove conceito de pessoa ativa/inativa"`.
