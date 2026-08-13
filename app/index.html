@@ -178,8 +178,8 @@ function fichaToTioFields(f){
   return { n:"Tia "+tiaLbl+" e Tio "+tioLbl, tel:tel||"—", ejc, end:enderecoCompleto(f), inst, foto:f.foto||null, ficha:f };
 }
 function formToTio(f){ return fichaToTioFields(f); }
-function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, cells:r.cells||{} }; }
-function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib }; }
+function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r.visibilidade, ejc:r.ejc, cells:r.cells||{}, rows:r.rows||{} }; }
+function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib, ejc:m.ejc||null }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
 function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, descricao:r.descricao, responsabilidade:r.responsabilidade }; }
@@ -384,12 +384,38 @@ function StoreProvider({ user, children }){
       if(error) return null;
       const row=rowToMontagem(data); setMontagens(l=>[row,...l]); return row;
     },
+    setVisibilidadeMontagem: async (montId,visib)=>{
+      const { data, error } = await supabase.from("montagens").update({visibilidade:visib}).eq("id",montId).select().single();
+      if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
+      return { error };
+    },
     setMontagemCell: async (montId,tab,rowKey,person)=>{
       const m=montagens.find(x=>x.id===montId); if(!m) return;
       const tabCells={...(m.cells[tab]||{})};
       if(person) tabCells[rowKey]=person; else delete tabCells[rowKey]; // person null → remove da equipe
       const newCells={...m.cells,[tab]:tabCells};
       const { data, error } = await supabase.from("montagens").update({cells:newCells}).eq("id",montId).select().single();
+      if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
+    },
+    // adiciona mais uma linha vazia numa seção (equipes comuns não têm mais limite fixo de linhas)
+    addRowSection: async (montId,tab,sec)=>{
+      const m=montagens.find(x=>x.id===montId); if(!m) return;
+      const atuais=rowsForSection(m,tab,sec);
+      const novaKey=sec.label+"-x"+uid();
+      const newRowsTab={...(m.rows[tab]||{}), [sec.label]:[...atuais,novaKey]};
+      const newRows={...m.rows,[tab]:newRowsTab};
+      const { data, error } = await supabase.from("montagens").update({rows:newRows}).eq("id",montId).select().single();
+      if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
+    },
+    // exclui a linha inteira da seção (com ou sem pessoa) — não é só limpar, some com a linha
+    removeRowSection: async (montId,tab,sec,rowKey)=>{
+      const m=montagens.find(x=>x.id===montId); if(!m) return;
+      const atuais=rowsForSection(m,tab,sec).filter(k=>k!==rowKey);
+      const newRowsTab={...(m.rows[tab]||{}), [sec.label]:atuais};
+      const newRows={...m.rows,[tab]:newRowsTab};
+      const tabCells={...(m.cells[tab]||{})}; delete tabCells[rowKey];
+      const newCells={...m.cells,[tab]:tabCells};
+      const { data, error } = await supabase.from("montagens").update({rows:newRows,cells:newCells}).eq("id",montId).select().single();
       if(!error) setMontagens(l=>l.map(x=>x.id===montId?rowToMontagem(data):x));
     },
     addForm: async (f)=>{
@@ -912,18 +938,22 @@ function Tios({ onNovo, onOpenPerson }){
 /* ======================================================================
    MONTAGEM
    ====================================================================== */
-// estrutura de linhas da planilha — varia por equipe. "casal" = 2 linhas (as duas pessoas do casal).
-// "flex" = seção com adicionar/remover livre até `count` pessoas (equipes comuns).
+// estrutura de linhas da planilha — varia por equipe. `count` é só o número INICIAL de linhas:
+// toda seção sempre permite adicionar mais linhas e excluir qualquer linha (com ou sem pessoa) —
+// ver rowsForSection/addRowSection/removeRowSection. "casal" = a linha recebe um casal de tios
+// (um único registro de "tios" já representa os dois).
 const COORD_JOVENS={label:"Jovens coordenadores",count:2,tone:"var(--brand-brown)",kind:"jovem"};
 const CASAL_COORD={label:"Casal de tios coordenadores",count:2,tone:"var(--cat-plum)",kind:"casal"};
+const CASAL_COORD_1={...CASAL_COORD,count:1};
+const TIOS_APOIO_3={label:"Tios apoio",count:3,tone:"var(--cat-terracotta)",kind:"casal"};
 const TEAM_STRUCTS={
   "Coordenação Geral":[
     COORD_JOVENS,
-    CASAL_COORD,
+    CASAL_COORD_1,
   ],
   "Sala":[
     COORD_JOVENS,
-    CASAL_COORD,
+    CASAL_COORD_1,
     {label:"Casal de animadores",count:2,tone:"var(--cat-terracotta)",kind:"casal"},
     {label:"Casal mini bar",count:2,tone:"var(--cat-olive)",kind:"casal"},
     {label:"Casal boa vontade",count:2,tone:"var(--cat-blue)",kind:"casal"},
@@ -931,18 +961,45 @@ const TEAM_STRUCTS={
   ],
   "Compras":[
     COORD_JOVENS,
-    CASAL_COORD,
+    CASAL_COORD_1,
     {label:"Equipe",count:4,tone:"var(--cat-blue)",kind:"jovem"},
   ],
+  "Acolhida":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:15,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Cafezinho":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:15,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Cozinha":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:15,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Liturgia Interna":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:15,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Secretaria":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:15,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Liturgia Externa":[COORD_JOVENS,CASAL_COORD_1,TIOS_APOIO_3,{label:"Equipe",count:20,tone:"var(--cat-blue)",kind:"jovem"}],
+  "Ordem e Limpeza":[
+    {label:"Equipe",count:6,tone:"var(--cat-olive)",kind:"misto"},
+  ],
+  "Recepção ao Palestrante":[
+    CASAL_COORD_1,
+  ],
+  "Tios Circulistas":[
+    CASAL_COORD_1,
+    {label:"Tios apoio",count:2,tone:"var(--cat-terracotta)",kind:"casal"},
+    {label:"Equipe",count:30,tone:"var(--cat-blue)",kind:"jovem"},
+  ],
+  "Visitação Externa":[
+    CASAL_COORD_1,
+    {label:"Equipe",count:20,tone:"var(--cat-blue)",kind:"jovem"},
+  ],
 };
-// equipes comuns: coordenação + tios apoio + equipe livre de até 30 pessoas
+// equipes sem estrutura customizada (hoje só a Moita): coordenação + tios apoio + equipe de até 30 pessoas
 const DEFAULT_STRUCT=[
   COORD_JOVENS,
   CASAL_COORD,
   {label:"Tios apoio",count:3,tone:"var(--cat-terracotta)",kind:"casal"},
-  {label:"Equipe",count:30,tone:"var(--cat-blue)",kind:"jovem",flex:true},
+  {label:"Equipe",count:30,tone:"var(--cat-blue)",kind:"jovem"},
 ];
 const estruturaDaEquipe = tab => TEAM_STRUCTS[tab] || DEFAULT_STRUCT;
+// linhas ativas de uma seção — usa o que já foi salvo em montagem.rows (permite add/remove livre);
+// se ainda não existe (montagem antiga ou seção nunca tocada), usa as linhas padrão da seção
+function rowsForSection(montagem, tab, sec){
+  const custom = montagem.rows && montagem.rows[tab] && montagem.rows[tab][sec.label];
+  return custom || Array.from({length:sec.count},(_,i)=>sec.label+"-"+i);
+}
 
 function AddPersonCell({ pool, onPick }){
   const [open,setOpen]=useState(false);
@@ -1064,9 +1121,11 @@ function ExportarModal({ montagem, tabAtual, onClose }){
 }
 
 function MontagemSheet({ montagem, onBack }){
-  const { jovens, tios, setMontagemCell } = useStore();
+  const { jovens, tios, setMontagemCell, setVisibilidadeMontagem, addRowSection, removeRowSection } = useStore();
   const [tab,setTab]=useState(MONTAGEM_TABS[0]);
   const [exportOpen,setExportOpen]=useState(false);
+  const [busyVisib,setBusyVisib]=useState(false);
+  const tornarPublica=async ()=>{ setBusyVisib(true); await setVisibilidadeMontagem(montagem.id,"Todos com acesso"); setBusyVisib(false); };
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
   const teamData=(montagem.cells&&montagem.cells[tab])||{};
   // pool de busca: jovens + casais de tios — um casal de tios ocupa uma linha só (já é uma "pessoa" na planilha)
@@ -1080,14 +1139,18 @@ function MontagemSheet({ montagem, onBack }){
   };
 
   let rowIdx=0;
-  const filledRow=(rowKey,person)=>{
+  const excluirLinha=(sec,rowKey)=>removeRowSection(montagem.id,tab,sec,rowKey);
+  const botaoExcluirLinha=(sec,rowKey)=>(
+    <IconButton label="Excluir linha" size={26} variant="soft" onClick={()=>excluirLinha(sec,rowKey)}><Icon name="trash-2" size={13}/></IconButton>
+  );
+  const filledRow=(sec,rowKey,person)=>{
     rowIdx++;
     const outras=equipesDaPessoa(person.id);
     const alerta=outras.length>0;
     return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)",background:alerta?"color-mix(in oklch, var(--danger-soft) 45%, transparent)":"transparent"}}>
       <td style={{padding:"8px 8px 8px 12px",whiteSpace:"nowrap"}}>
         <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
-          <button title="Remover da equipe" aria-label="Remover da equipe" onClick={()=>setPerson(rowKey,null)} style={{border:"none",cursor:"pointer",background:"var(--danger-soft)",color:"var(--brand-red)",display:"inline-flex",alignItems:"center",justifyContent:"center",width:26,height:26,borderRadius:"50%",flex:"0 0 auto"}}><Icon name="x" size={15}/></button>
+          <button title="Remover da equipe" aria-label="Remover da equipe" onClick={()=>setPerson(rowKey,null)} style={{border:"none",cursor:"pointer",background:"var(--brand-red)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",width:26,height:26,borderRadius:"50%",flex:"0 0 auto"}}><Icon name="x" size={17}/></button>
           <span style={{color:"var(--text-3)",fontWeight:700}}>{rowIdx}</span>
         </span>
       </td>
@@ -1102,20 +1165,23 @@ function MontagemSheet({ montagem, onBack }){
       <td style={{padding:"8px 14px",color:"var(--text-2)",whiteSpace:"nowrap"}}>{person.ejc}</td>
       <td style={{padding:"8px 14px",color:"var(--text-2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{person.end}</td>
       <td style={{padding:"8px 14px"}}>{person.inst?<Tag color="var(--cat-plum)">{person.inst}</Tag>:<span style={{color:"var(--text-3)"}}>—</span>}</td>
+      <td style={{padding:"8px 14px"}}>{botaoExcluirLinha(sec,rowKey)}</td>
     </tr>;
   };
-  const addRow=(rowKey)=>{
+  const addRow=(sec,rowKey)=>{
     rowIdx++;
     return <tr key={rowKey} style={{borderBottom:"1px solid var(--hairline)"}}>
       <td style={{padding:"8px 8px 8px 34px",color:"var(--text-3)",fontWeight:700}}>{rowIdx}</td>
       <td colSpan={6} style={{padding:"8px 14px"}}><AddPersonCell pool={pool} onPick={p=>setPerson(rowKey,p)}/></td>
+      <td style={{padding:"8px 14px"}}>{botaoExcluirLinha(sec,rowKey)}</td>
     </tr>;
   };
 
   return <div>
     <Header title={montagem.nome}
-      sub={"Responsável: "+montagem.autor+" · "+montagem.visib}
-      right={<div style={{display:"flex",gap:8}}>
+      sub={(montagem.ejc?(montagem.ejc+" · "):"")+"Responsável: "+montagem.autor+" · "+montagem.visib}
+      right={<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {montagem.visib==="Só o proprietário" && <Button variant="secondary" iconLeft={<Icon name="globe" size={16}/>} onClick={tornarPublica} disabled={busyVisib} style={{opacity:busyVisib?.7:1}}>{busyVisib?"Alterando...":"Tornar pública"}</Button>}
         <Button variant="primary" iconLeft={<Icon name="download" size={16}/>} onClick={()=>setExportOpen(true)}>Exportar</Button>
         <Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>
       </div>}/>
@@ -1130,35 +1196,31 @@ function MontagemSheet({ montagem, onBack }){
 
     <Card pad="0" style={{overflow:"hidden"}}>
       <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:900}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:960}}>
           <thead>
             <tr>
-              {["#","Foto","Nome","Telefone","EJC que fez","Endereço","Instrumento"].map((c,i)=>(
+              {["#","Foto","Nome","Telefone","EJC que fez","Endereço","Instrumento","Ações"].map((c,i)=>(
                 <th key={i} style={{padding:"11px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",background:"var(--surface-2)",whiteSpace:"nowrap"}}>{c}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {sections.map((sec)=>{
-              // linhas preenchidas dessa seção (chaves "<label>-<i>")
-              const filledKeys=Object.keys(teamData).filter(k=>k.startsWith(sec.label+"-")&&teamData[k]).sort((a,b)=>(+a.split("-").pop())-(+b.split("-").pop()));
+              const rowKeys=rowsForSection(montagem,tab,sec);
+              const preenchidas=rowKeys.filter(k=>teamData[k]).length;
               return <React.Fragment key={sec.label}>
-                <tr><td colSpan={7} style={{padding:"10px 14px",background:"var(--surface-2)"}}>
+                <tr><td colSpan={8} style={{padding:"10px 14px",background:"var(--surface-2)"}}>
                   <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:700,color:sec.tone,textTransform:"uppercase",letterSpacing:".04em"}}>
                     <span style={{width:8,height:8,borderRadius:"50%",background:sec.tone}}/>{sec.label}
-                    {sec.flex && <span style={{color:"var(--text-3)",fontWeight:600,textTransform:"none",letterSpacing:0}}>· {filledKeys.length}/{sec.count}</span>}
+                    <span style={{color:"var(--text-3)",fontWeight:600,textTransform:"none",letterSpacing:0}}>· {preenchidas}/{rowKeys.length}</span>
                   </span>
                 </td></tr>
-                {sec.flex
-                  ? <>
-                      {filledKeys.map(k=>filledRow(k,teamData[k]))}
-                      {filledKeys.length<sec.count && addRow(sec.label+"-"+(filledKeys.length?(+filledKeys[filledKeys.length-1].split("-").pop())+1:0))}
-                    </>
-                  : Array.from({length:sec.count}).map((_,k)=>{
-                      const rowKey=sec.label+"-"+k;
-                      const person=teamData[rowKey];
-                      return person?filledRow(rowKey,person):addRow(rowKey);
-                    })}
+                {rowKeys.map(k=> teamData[k] ? filledRow(sec,k,teamData[k]) : addRow(sec,k))}
+                <tr>
+                  <td colSpan={8} style={{padding:"6px 14px 12px 34px"}}>
+                    <button onClick={()=>addRowSection(montagem.id,tab,sec)} style={{display:"inline-flex",alignItems:"center",gap:7,background:"transparent",border:"none",cursor:"pointer",color:"var(--text-2)",fontWeight:600,fontSize:12.5,fontFamily:"var(--font-sans)",padding:"4px"}}><Icon name="plus" size={14}/>Adicionar linha em {sec.label}</button>
+                  </td>
+                </tr>
               </React.Fragment>;
             })}
           </tbody>
@@ -1166,21 +1228,27 @@ function MontagemSheet({ montagem, onBack }){
       </div>
     </Card>
     <p style={{fontSize:12,color:"var(--text-3)",marginTop:12,display:"flex",alignItems:"center",gap:6}}>
-      <Icon name="alert-triangle" size={14}/>Se alguém já estiver em outra equipe, o nome fica destacado em vermelho com o aviso. Use o × vermelho à esquerda pra remover da equipe. A planilha começa zerada.
+      <Icon name="alert-triangle" size={14}/>Se alguém já estiver em outra equipe, o nome fica destacado em vermelho com o aviso. Use o × vermelho à esquerda pra remover da equipe (mantém a linha) ou a lixeira à direita pra excluir a linha inteira. A planilha começa zerada.
     </p>
   </div>;
 }
 
 function NovaMontagemModal({ onClose, onCreate }){
+  const { ejcListSimples } = useStore();
   const [nome,setNome]=useState("");
   const [autor,setAutor]=useState("");
   const [visib,setVisib]=useState("Todos com acesso");
+  const [ejc,setEjc]=useState("");
   return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}} onClick={onClose}>
-    <div onClick={e=>e.stopPropagation()} style={{width:440,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px"}}>
+    <div onClick={e=>e.stopPropagation()} style={{width:440,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"26px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
       <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800}}>Fazer montagem</h3>
       <p style={{margin:"0 0 20px",fontSize:14,color:"var(--text-2)"}}>Crie uma nova montagem para organizar as equipes.</p>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Nome da montagem</label>
       <input autoFocus value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Montagem XXXI EJC (2026)" style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",marginBottom:16}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Qual EJC é essa montagem</label>
+      <select value={ejc} onChange={e=>setEjc(e.target.value)} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none",marginBottom:16}}>
+        <option value="">Selecione...</option>{ejcListSimples.map(e=><option key={e}>{e}</option>)}
+      </select>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Responsável pela criação</label>
       <input value={autor} onChange={e=>setAutor(e.target.value)} placeholder="Seu nome" style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",marginBottom:16}}/>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:8}}>Quem pode visualizar</label>
@@ -1191,7 +1259,7 @@ function NovaMontagemModal({ onClose, onCreate }){
       </div>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={()=>onCreate({nome:nome||"Nova montagem",autor:autor||"Você",visib})} iconLeft={<Icon name="check" size={16}/>}>Criar montagem</Button>
+        <Button variant="primary" onClick={()=>onCreate({nome:nome||"Nova montagem",autor:autor||"Você",visib,ejc:ejc||null})} iconLeft={<Icon name="check" size={16}/>}>Criar montagem</Button>
       </div>
     </div>
   </div>;
@@ -1221,7 +1289,7 @@ function Montagem(){
             <span style={{width:46,height:46,borderRadius:99,background:"var(--cat-terracotta)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center"}}><Icon name="layout-grid" size={20}/></span>
             <Badge tone={m.visib==="Só o proprietário"?"neutral":"success"} dot>{m.visib==="Só o proprietário"?"Privada":"Compartilhada"}</Badge>
           </div>
-          <div><div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{m.nome}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>por {m.autor}{n>0?" · "+n+" alocados":""}</div></div>
+          <div><div style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>{m.nome}</div><div style={{fontSize:13,color:"var(--text-2)",marginTop:2}}>{m.ejc?(m.ejc+" · "):""}por {m.autor}{n>0?" · "+n+" alocados":""}</div></div>
         </button>
       );})}
     </div>

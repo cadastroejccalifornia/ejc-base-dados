@@ -33,11 +33,11 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 ## Bloco F — EJCs (edições) ✅ (2026-08-12)
 - [x] **F1.** Opção de cadastrar novos EJCs no banco (hoje a lista vai só até XXXI/2026). *(a lista de edições, que era uma lista fixa no código, virou uma tabela `ejc_edicoes` no banco; novo card "Edições do EJC" em Configurações — botão "Adicionar próximo EJC" já sugere o próximo número, só pede o ano. Todos os formulários (ficha do jovem, ficha dos tios, filtro de Relatórios) agora leem a lista do banco. **Precisa rodar** [supabase_migration_ejc_edicoes.sql](supabase_migration_ejc_edicoes.sql) — sem ela o app usa a lista antiga como reserva (nada quebra, só não dá pra adicionar edição nova ainda))*
 
-## Bloco G — Montagem (bloco maior, dividir em sub-etapas)
-- [ ] **G1.** Trocar bolinha vermelha ao lado do nome por um X vermelho.
-- [ ] **G2.** Ao criar montagem: escolher se é pública ou privada (do criador); privada pode ser tornada pública depois.
-- [ ] **G3.** Ao criar montagem: escolher a qual EJC ela pertence.
-- [ ] **G4.** Reestruturar linhas/tamanhos por equipe (regra: só ajustar o que for pedido abaixo, resto continua igual):
+## Bloco G — Montagem (bloco maior, dividido em sub-etapas)
+- [x] **G1.** Trocar bolinha vermelha ao lado do nome por um X vermelho. *(2026-08-12: botão de remover da equipe agora é vermelho sólido com X branco, bem mais visível que o "bolinha" antigo)*
+- [x] **G2.** Ao criar montagem: escolher se é pública ou privada (do criador); privada pode ser tornada pública depois. *(2026-08-12: a escolha na criação já existia; adicionado botão "Tornar pública" na tela da montagem, aparece só quando ela está "Só o proprietário". **Caveat encontrado:** hoje o RLS do banco deixa QUALQUER dirigente ver/editar qualquer montagem, então "Só o proprietário" ainda é só um rótulo visual, não uma restrição de acesso de verdade — não mexi nisso agora por ser mudança de banco maior, mas fica registrado)*
+- [x] **G3.** Ao criar montagem: escolher a qual EJC ela pertence. *(2026-08-12: select no modal de criação + mostrado no card da lista e no cabeçalho da planilha. **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql))*
+- [x] **G4.** Reestruturar linhas/tamanhos por equipe (regra: só ajustar o que for pedido abaixo, resto continua igual):
   - Coordenação Geral: 2 jovens coordenadores + 1 linha casal de tios coordenadores
   - Sala: casal de tios como 1 linha só; permitir adicionar mais em Animadores, Mini Bar, Boa Vontade e Músico
   - Compras: casal de tios como 1 linha só; manter 4 jovens da equipe + opção de +1
@@ -48,6 +48,7 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
   - Tios Circulistas: remover jovem coordenador; 1 linha casal de tios coordenadores + 2 linhas tios apoio
   - Visitação Externa: remover jovens coordenadores; 1 linha casal de tios coordenadores + 20 linhas de equipe; remover tios apoio
   - Em qualquer equipe: sempre permitir excluir qualquer linha (não só as com pessoa) e sempre ter opção de adicionar mais gente.
+  - ✅ Feito em 2026-08-12. Reli o pedido com a regra "o que eu não pedir pra mudar tá certo": em equipes como Acolhida/Cafezinho/Cozinha/Liturgia Interna/Secretaria/Liturgia Externa/Tios Circulistas, mantive "Jovens coordenadores" (não foi pedido pra tirar) e só mudei o que foi citado (casal→1 linha, contagens de equipe/apoio). Em Recepção ao Palestrante entendi que só sobra a linha de tios coordenadores (frase "colocar X e excluir Y e Z" cobrindo os 3 outros grupos). Toda seção agora tem "Adicionar linha em [equipe]" no rodapé e um ícone de lixeira por linha (exclui a linha inteira, com ou sem pessoa) — isso vale pra TODAS as equipes, não só as citadas. **Se alguma equipe ficou diferente do que você imaginava, me avisa qual e eu ajusto.** **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql) (coluna nova pra guardar as linhas adicionadas/excluídas).
 - [ ] **G5.** Equipe especial "Corte/Recusa" (não conta como equipe de serviço):
   - Quem está nela entra na ficha, ao final do encontro, como "não serviu".
   - Em qualquer linha de qualquer equipe: opção de excluir a pessoa da montagem ou mover para Corte/Recusa; ao fazer isso a linha original fica em aberto (pode receber outra pessoa ou ser excluída).
