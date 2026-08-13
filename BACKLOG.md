@@ -49,12 +49,14 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
   - Visitação Externa: remover jovens coordenadores; 1 linha casal de tios coordenadores + 20 linhas de equipe; remover tios apoio
   - Em qualquer equipe: sempre permitir excluir qualquer linha (não só as com pessoa) e sempre ter opção de adicionar mais gente.
   - ✅ Feito em 2026-08-12. Reli o pedido com a regra "o que eu não pedir pra mudar tá certo": em equipes como Acolhida/Cafezinho/Cozinha/Liturgia Interna/Secretaria/Liturgia Externa/Tios Circulistas, mantive "Jovens coordenadores" (não foi pedido pra tirar) e só mudei o que foi citado (casal→1 linha, contagens de equipe/apoio). Em Recepção ao Palestrante entendi que só sobra a linha de tios coordenadores (frase "colocar X e excluir Y e Z" cobrindo os 3 outros grupos). Toda seção agora tem "Adicionar linha em [equipe]" no rodapé e um ícone de lixeira por linha (exclui a linha inteira, com ou sem pessoa) — isso vale pra TODAS as equipes, não só as citadas. **Se alguma equipe ficou diferente do que você imaginava, me avisa qual e eu ajusto.** **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql) (coluna nova pra guardar as linhas adicionadas/excluídas).
-- [ ] **G5.** Equipe especial "Corte/Recusa" (não conta como equipe de serviço):
-  - Quem está nela entra na ficha, ao final do encontro, como "não serviu".
-  - Em qualquer linha de qualquer equipe: opção de excluir a pessoa da montagem ou mover para Corte/Recusa; ao fazer isso a linha original fica em aberto (pode receber outra pessoa ou ser excluída).
-  - Dividida em dois blocos separados: Jovens e Tios.
-  - Guardar histórico de qual equipe a pessoa estava antes do corte (visível na linha), mas isso **nunca** conta como "serviu naquela equipe" quando as fichas forem atualizadas — entra como não serviu.
-  - Opção de remover alguém da lista de Corte/Recusa (engano ou retorno à montagem).
+- [x] **G5.** Equipe especial "Corte/Recusa" (não conta como equipe de serviço). ✅ 2026-08-12
+  - Quem está nela entra na ficha, ao final do encontro, como "não serviu". *(guardado pra quando o G6 existir — a lista já marca claramente quem está em Corte/Recusa)*
+  - Em qualquer linha de qualquer equipe: opção de excluir a pessoa da montagem ou mover para Corte/Recusa; ao fazer isso a linha original fica em aberto (pode receber outra pessoa ou ser excluída). *(novo botão de tesoura ao lado da lixeira, em toda linha preenchida de toda equipe)*
+  - Dividida em dois blocos separados: Jovens e Tios. *(dois cards, um embaixo do outro)*
+  - Guardar histórico de qual equipe a pessoa estava antes do corte (visível na linha). *("Estava em: {equipe}" em cada linha do Corte/Recusa)*
+  - Opção de remover alguém da lista de Corte/Recusa (engano ou retorno à montagem). *(botão de remover em cada linha do Corte/Recusa — só tira da lista, não recoloca automaticamente em nenhuma equipe)*
+  - Não aparece como aba junto das equipes normais — é um botão separado (ícone de tesoura, cor vermelha) ao lado das abas, com um separador visual.
+  - **Precisa rodar** [supabase_migration_montagem_ejc.sql](supabase_migration_montagem_ejc.sql) (nova versão, com a coluna `corte`).
 - [ ] **G6.** "Adicionar EJC à ficha dos integrantes" — ação pós-evento, com tela de confirmação (edita muitas fichas de uma vez):
   - Para quem ficou na montagem: adiciona na ficha "EJC (ano) + Equipe + coordenou ou não", no mesmo formato usado hoje.
   - Para quem não serviu (Corte/Recusa) e para todo mundo que já fez EJC anterior (edições passadas) sem ter servido nesta: adicionar "EJC (ano) — não serviu" (ou nomenclatura já usada hoje para isso).
