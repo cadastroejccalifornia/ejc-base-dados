@@ -3099,10 +3099,10 @@ function Relatorios(){
 /* ======================================================================
    DIRIGENTES (gestão de admins)
    ====================================================================== */
-// função do dirigente: uma equipe do MJC, "Tio dirigente" ou "Coordenação Geral"
-const CARGOS_DIRIGENTE=["Coordenação Geral",...MJC_TEAMS,"Tio dirigente"];
-const cargoColor = c => c==="Tio dirigente" ? "var(--cat-terracotta)" : c==="Coordenação Geral" ? "var(--brand-brown)" : mjcColor(c);
-const cargoIcon = c => c==="Tio dirigente" ? "heart-handshake" : c==="Coordenação Geral" ? "shield-check" : (MJC_ICON[c]||"users");
+// função do dirigente: uma equipe do MJC, "Tio Dirigente", "Dirigente Espiritual" ou "Admin"
+const CARGOS_DIRIGENTE=[...MJC_TEAMS,"Tio Dirigente","Dirigente Espiritual","Admin"];
+const cargoColor = c => c==="Tio Dirigente" ? "var(--cat-terracotta)" : c==="Dirigente Espiritual" ? "var(--cat-plum)" : c==="Admin" ? "var(--brand-brown)" : mjcColor(c);
+const cargoIcon = c => c==="Tio Dirigente" ? "heart-handshake" : c==="Dirigente Espiritual" ? "cross" : c==="Admin" ? "shield-check" : (MJC_ICON[c]||"users");
 
 function NovoDirigenteModal({ onClose, onCreate, initial }){
   const editing = !!initial;
