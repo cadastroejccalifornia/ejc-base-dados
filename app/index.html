@@ -122,7 +122,11 @@ function toRoman(num){
 const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
 // XXXI EJC, XXX EJC, ... até I EJC — usado só na lista de "equipes que serviu" dos tios
 // (eles podem ter servido em edições do EJC, que vai até XXXI, mesmo o ECC deles sendo outra numeração)
-const EJC_LIST_SIMPLES=(()=>{ const a=[]; for(let n=31;n>=1;n--) a.push(toRoman(n)+" EJC"); return a; })();
+// semente das edições do EJC (numero+ano) — usada só até a tabela `ejc_edicoes` ser criada/populada
+// no banco (migração supabase_migration_ejc_edicoes.sql); depois disso o banco manda.
+// A lista "XXXI EJC"/"XXXI EJC (2026)" usadas nos formulários vêm de `useStore().ejcListSimples`/`ejcYears`,
+// derivadas dessa semente (ou do banco, quando a migração já rodou) — nunca mais hardcoded no componente.
+const SEED_EJC_EDICOES = EJC_YEARS.map((y,i)=>({ numero:31-i, ano:anoDoEjc(y) }));
 // regra dos tios: XXIX → só 1 equipe; XXVIII → só 2; o restante → até 3 (2 padrão + opção de +1)
 function maxEquipesEcc(qualFez){
   const idx=ECC_LIST.indexOf(qualFez);
@@ -260,6 +264,7 @@ function StoreProvider({ user, children }){
   const [formularios,setFormularios]=useState([]);
   const [dirigentes,setDirigentes]=useState([]);
   const [eventos,setEventos]=useState([]);
+  const [ejcEdicoes,setEjcEdicoes]=useState(SEED_EJC_EDICOES);
   const [loading,setLoading]=useState(true);
   const isAdmin = user.role==="admin";
 
@@ -267,13 +272,14 @@ function StoreProvider({ user, children }){
     let active=true;
     (async ()=>{
       setLoading(true);
-      const [jRes,tRes,mRes,fRes,dRes,eRes] = await Promise.all([
+      const [jRes,tRes,mRes,fRes,dRes,eRes,edRes] = await Promise.all([
         supabase.from("jovens").select("*").order("created_at",{ascending:false}),
         supabase.from("tios").select("*").order("created_at",{ascending:false}), // membro só recebe a própria linha (RLS)
         isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
         supabase.from("formularios").select("*"),
         isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
         supabase.from("eventos").select("*").order("data",{ascending:true}), // membros também leem (RLS permite ver)
+        supabase.from("ejc_edicoes").select("*").order("numero",{ascending:false}),
       ]);
       if(!active) return;
       setJovens((jRes.data||[]).map(rowToJovem));
@@ -282,13 +288,25 @@ function StoreProvider({ user, children }){
       setFormularios((fRes.data||[]).map(rowToForm));
       setDirigentes((dRes.data||[]).map(rowToDirigente));
       setEventos((eRes.data||[]).map(rowToEvento)); // tabela pode não existir ainda → fica vazio sem quebrar
+      if(!edRes.error && (edRes.data||[]).length) setEjcEdicoes(edRes.data); // senão fica na semente (tabela ainda não existe/vazia)
       setLoading(false);
     })();
     return ()=>{ active=false; };
   },[user.id]);
 
+  // strings prontas pra usar nos formulários — derivadas de ejcEdicoes (numero+ano), sempre em ordem decrescente
+  const ejcYears = ejcEdicoes.map(e=>toRoman(e.numero)+" EJC ("+e.ano+")");
+  const ejcListSimples = ejcEdicoes.map(e=>toRoman(e.numero)+" EJC");
+
   const api={
     jovens, tios, montagens, formularios, dirigentes, eventos, loading,
+    ejcEdicoes, ejcYears, ejcListSimples,
+    addEjcEdicao: async (ano)=>{
+      const numero = Math.max(0,...ejcEdicoes.map(e=>e.numero)) + 1;
+      const { data, error } = await supabase.from("ejc_edicoes").insert({ numero, ano }).select().single();
+      if(!error) setEjcEdicoes(l=>[data,...l].sort((a,b)=>b.numero-a.numero));
+      return { data, error };
+    },
     addJovem: async (j)=>{
       const { data, error } = await supabase.from("jovens").insert(jovemToRow(j)).select().single();
       if(!error) setJovens(l=>[rowToJovem(data),...l]);
@@ -1807,7 +1825,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     endereco:"", complemento:"", bairro:"", cidade:"",
     ...(initial||{}),
   });
-  const { jovens } = useStore();
+  const { jovens, ejcYears, ejcListSimples } = useStore();
   const [errors,setErrors]=useState({});
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
 
@@ -1945,12 +1963,12 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
           <Field label="Qual EJC você fez?" required error={errors.anoEjc}>
             <select value={f.anoEjc||""} onChange={e=>set("anoEjc",e.target.value)} style={{width:"100%",border:"none",background:errors.anoEjc?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
-              <option value="">Selecione...</option>{EJC_YEARS.map(y=><option key={y}>{y}</option>)}
+              <option value="">Selecione...</option>{ejcYears.map(y=><option key={y}>{y}</option>)}
             </select>
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no Califórnia" hint="Escolha a equipe de cada ano em que serviu — deixe em branco os anos que não serviu. Só aparecem anos depois do seu EJC.">
-              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={anosDepoisDoEjc(f.anoEjc)} needsYear={!f.anoEjc}/>
+              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={anosDepoisDoEjc(f.anoEjc,ejcYears)} needsYear={!f.anoEjc}/>
             </Field>
           </div>
           <div style={{marginTop:16}}>
@@ -1968,7 +1986,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipe que serviu no Califórnia" hint="Adicione o EJC do Califórnia, a equipe e se foi coordenação">
-              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} eccOptions={EJC_LIST_SIMPLES}/>
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} eccOptions={ejcListSimples}/>
             </Field>
           </div>
           <label style={{display:"inline-flex",alignItems:"center",gap:9,fontSize:14,marginTop:16,cursor:"pointer"}}>
@@ -2043,6 +2061,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
   const [errors,setErrors]=useState({});
   const [busy,setBusy]=useState(false);
+  const { ejcListSimples } = useStore();
   useLucide();
 
   const handleSave=async ()=>{
@@ -2156,7 +2175,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no EJC" hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
-              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={EJC_LIST_SIMPLES}/>
+              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={ejcListSimples}/>
             </Field>
           </div>
         </div>}
@@ -2164,7 +2183,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           <Field label="Qual seu ECC? (Número + Nome)"><Input value={f.qualEcc||""} onChange={e=>set("qualEcc",e.target.value)} placeholder="Ex: XV ECC Nossa Senhora de Fátima"/></Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no Califórnia" hint="Até 2 equipes — EJC, equipe e se foi coordenação">
-              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={EJC_LIST_SIMPLES}/>
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={ejcListSimples}/>
             </Field>
           </div>
         </div>}
@@ -2238,7 +2257,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 }
 
 // anos em que a pessoa PODE ter servido: só depois do próprio EJC (nunca antes/no mesmo ano)
-const anosDepoisDoEjc = anoEjcStr => { const a=anoDoEjc(anoEjcStr); return a ? EJC_YEARS.filter(y=>anoDoEjc(y)>a) : []; };
+const anosDepoisDoEjc = (anoEjcStr,ejcYears) => { const a=anoDoEjc(anoEjcStr); return a ? ejcYears.filter(y=>anoDoEjc(y)>a) : []; };
 
 // mostra uma linha por ano disponível; em cada ano a pessoa escolhe a equipe (dropdown) e se foi coordenador
 function EquipesPorAno({ value, onChange, years, needsYear }){
@@ -2663,7 +2682,7 @@ function PessoasListModal({ title, subtitle, pessoas, onClose }){
 }
 
 function Relatorios(){
-  const { jovens, tios } = useStore();
+  const { jovens, tios, ejcListSimples } = useStore();
   const todos = [...jovens, ...tios]; // inclui casais de tios
   const musicos = todos.filter(p=>p.inst);
   // músicos por instrumento (inst pode ter vários separados por vírgula)
@@ -2707,7 +2726,7 @@ function Relatorios(){
           <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
         </select>
         <select value={edSel} onChange={e=>setEdSel(e.target.value)} style={{border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"11px 14px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",flex:"1 1 170px",minWidth:150}}>
-          <option value="">EJC...</option>{EJC_LIST_SIMPLES.map(e=><option key={e}>{e}</option>)}
+          <option value="">EJC...</option>{ejcListSimples.map(e=><option key={e}>{e}</option>)}
         </select>
         <Button variant="primary" iconLeft={<Icon name="search" size={16}/>} onClick={buscarEquipeEjc} disabled={!eqSel||!edSel}>Ver lista</Button>
       </div>
@@ -2918,11 +2937,53 @@ function RedefinirSenhaCard(){
   </Card>;
 }
 
+// cadastro de novas edições do EJC — sempre a próxima (numero = maior + 1), só pede o ano
+function EdicoesEjcCard(){
+  const { ejcEdicoes, addEjcEdicao } = useStore();
+  const [open,setOpen]=useState(false);
+  const [ano,setAno]=useState(String(new Date().getFullYear()));
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const proxNumero = Math.max(0,...ejcEdicoes.map(e=>e.numero)) + 1;
+  const criar=async ()=>{
+    const anoNum=parseInt(ano,10);
+    if(!anoNum||anoNum<1990||anoNum>2100){ setErr("Informe um ano válido."); return; }
+    setBusy(true);
+    const r=await addEjcEdicao(anoNum);
+    setBusy(false);
+    if(r&&r.error){
+      const msg=r.error.message||"";
+      setErr((r.error.code==="42P01"||/does not exist|schema cache|relation/i.test(msg))?"A tabela de edições do EJC ainda não existe no Supabase — rode a migração e tente de novo.":msg);
+      return;
+    }
+    setOpen(false);
+  };
+  return <Card title="Edições do EJC" subtitle={ejcEdicoes.length+" edições cadastradas"} style={{marginBottom:20}}
+    action={!open && <Button variant="secondary" iconLeft={<Icon name="plus" size={16}/>} onClick={()=>{setOpen(true);setErr("");}}>Adicionar próximo EJC</Button>}>
+    {open && <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:14,marginBottom:14}}>
+      <div>
+        <div style={{fontSize:12,fontWeight:600,color:"var(--text-2)",marginBottom:5}}>Próxima edição</div>
+        <div style={{fontSize:16,fontWeight:800}}>{toRoman(proxNumero)} EJC</div>
+      </div>
+      <div style={{flex:"1 1 140px"}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,marginBottom:5,color:"var(--text-2)"}}>Ano</label>
+        <input value={ano} onChange={e=>setAno(e.target.value.replace(/\D/g,"").slice(0,4))} inputMode="numeric" style={{width:"100%",border:"none",background:"var(--surface)",borderRadius:"var(--r-md)",padding:"10px 12px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none"}}/>
+      </div>
+      <Button variant="primary" onClick={criar} disabled={busy} style={{opacity:busy?.7:1}} iconLeft={<Icon name="check" size={15}/>}>{busy?"Salvando...":"Confirmar"}</Button>
+      <Button variant="ghost" onClick={()=>setOpen(false)}>Cancelar</Button>
+    </div>}
+    {err && <div style={{fontSize:12,color:"var(--brand-red)",marginBottom:14,fontWeight:600}}>{err}</div>}
+    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+      {ejcEdicoes.map(e=><Badge key={e.numero} tone="brand">{toRoman(e.numero)+" EJC ("+e.ano+")"}</Badge>)}
+    </div>
+  </Card>;
+}
 function Configuracoes({ user, onEditPerson }){
   useLucide();
   return <div>
     <Header title="Configurações" sub="Área restrita da Coordenação Geral"/>
     <RedefinirSenhaCard/>
+    <EdicoesEjcCard/>
     <Dirigentes user={user} embedded onEditPerson={onEditPerson}/>
   </div>;
 }

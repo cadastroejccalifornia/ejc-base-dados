@@ -30,8 +30,8 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 - [x] **E1.** Permitir editar um evento do calendário (não só excluir). *(botão de editar (lápis) ao lado do de excluir em cada evento da lista; abre o mesmo modal de criar, agora reusado pra editar via novo `updateEvento`)*
 - [x] **E2.** Campo "responsabilidade do evento" com opções: EJC, MJC, Ficha, Pós, Montagem, Finanças, Palestra. *(chips no modal de criar/editar; aparece como tag colorida no evento da lista. **Precisa rodar** [supabase_migration_evento_responsabilidade.sql](supabase_migration_evento_responsabilidade.sql) no Supabase antes de funcionar — adiciona a coluna nova)*
 
-## Bloco F — EJCs (edições)
-- [ ] **F1.** Opção de cadastrar novos EJCs no banco (hoje a lista vai só até XXXI/2026).
+## Bloco F — EJCs (edições) ✅ (2026-08-12)
+- [x] **F1.** Opção de cadastrar novos EJCs no banco (hoje a lista vai só até XXXI/2026). *(a lista de edições, que era uma lista fixa no código, virou uma tabela `ejc_edicoes` no banco; novo card "Edições do EJC" em Configurações — botão "Adicionar próximo EJC" já sugere o próximo número, só pede o ano. Todos os formulários (ficha do jovem, ficha dos tios, filtro de Relatórios) agora leem a lista do banco. **Precisa rodar** [supabase_migration_ejc_edicoes.sql](supabase_migration_ejc_edicoes.sql) — sem ela o app usa a lista antiga como reserva (nada quebra, só não dá pra adicionar edição nova ainda))*
 
 ## Bloco G — Montagem (bloco maior, dividir em sub-etapas)
 - [ ] **G1.** Trocar bolinha vermelha ao lado do nome por um X vermelho.
