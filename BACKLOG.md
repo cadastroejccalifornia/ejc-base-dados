@@ -69,6 +69,7 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
 - [x] **X2.** Cards de "Últimos jovens/tios": 3 por card, nome resumido (nome+sobrenome) só no jovem, apelido acima do telefone só no jovem, tios mantêm o nome completo do casal, cards do mesmo tamanho. ✅ 2026-08-12
 - [x] **X3.** Montagem pública: dar opção de voltar a ser só do proprietário (antes só dava pra ir privada→pública). ✅ 2026-08-12
 - [x] **X4.** Recarregar a página (F5) sempre voltava pro Início, perdendo o lugar onde a pessoa estava. ✅ 2026-08-12 — última tela, filtro de equipe, ficha aberta e (dentro da Montagem) aba/modo Corte-Recusa ficam salvos no navegador (`localStorage`) e são restaurados ao recarregar.
+- [x] **X6.** Não existia opção de excluir uma montagem inteira. ✅ 2026-08-12 — botão de lixeira em cada card da lista de montagens, com confirmação (avisa que a planilha toda some, e que fichas já atualizadas via G6 não são desfeitas).
 - [x] **X5.** Jovens/Tios: filtro por EJC/ECC específico que a pessoa fez, e opção "De fora do Califórnia". ✅ 2026-08-12 (revisado) — terceira caixa "EJC: Todos" (jovens) / "ECC: Todos" (tios) ao lado do filtro de Equipe: abre a lista com "De fora do Califórnia" primeiro, seguido de cada edição (XXXI EJC, XXX EJC, ... / XXIX ECC, XXVIII ECC, ...). Filtra exatamente por aquela edição (ou por quem é de fora).
 
 ---
