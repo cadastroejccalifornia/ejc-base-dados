@@ -1106,7 +1106,8 @@ function calcularPlanoEjc(montagem, jovens, tios){
 // aplica de fato: escreve nas fichas (upsert — se já existir uma entrada dessa edição, substitui, então
 // dá pra rodar de novo sem duplicar). anoFull = "XXXI EJC (2026)" (jovem que fez no Califórnia); ejcSimples = "XXXI EJC"
 function novaListaEquipes(listaAtual, numEd, novaEntrada){
-  return [...(listaAtual||[]).filter(r=>numeroEdicao(r.ano||r.ejc)!==numEd), novaEntrada];
+  const lista=[...(listaAtual||[]).filter(r=>numeroEdicao(r.ano||r.ejc)!==numEd), novaEntrada];
+  return lista.sort((a,b)=>(numeroEdicao(b.ano||b.ejc)||0)-(numeroEdicao(a.ano||a.ejc)||0));
 }
 async function aplicarPlanoEjc(plano, montagem, anoFull, updateJovem, updateTio, onProgresso){
   const todos=[...plano.servidores.map(s=>({...s,naoServiu:false})), ...plano.naoServiram.map(s=>({...s,naoServiu:true}))];
@@ -1592,7 +1593,7 @@ function exportarFichaPDF(person){
   if(isTio){
     overline="Ficha dos tios";
     const equipesTio = f.fezCalifornia===true ? f.equipesEjc : f.equipesCalifornia;
-    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",(equipesTio||[]).map(r=>esc((r.ejc?r.ejc+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
+    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",[...equipesTio].sort((a,b)=>(numeroEdicao(b.ejc)||0)-(numeroEdicao(a.ejc)||0)).map(r=>esc((r.ejc?r.ejc+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
     const neuroPessoa=pref=>(f[pref+"Neuro"]||[]).map(n=>n==="Outra"?(f[pref+"NeuroOutra"]||"Outra"):n).join(", ");
     const endTio=enderecoCompleto(f);
     corpo=[
@@ -1623,7 +1624,7 @@ function exportarFichaPDF(person){
     overline="Ficha do jovem";
     const end=enderecoCompleto(f);
     const circuloDot=f.circulo?`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CIRCULO_COR[f.circulo]||"#999"};margin-right:7px;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span>`:"";
-    const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu",(f.equipesCalifornia||[]).map(r=>esc(((r.ano||r.ejc)?(r.ano||r.ejc)+" — ":"")+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
+    const equipesHTML=(f.equipesCalifornia||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu",[...f.equipesCalifornia].sort((a,b)=>(numeroEdicao(b.ano||b.ejc)||0)-(numeroEdicao(a.ano||a.ejc)||0)).map(r=>esc(((r.ano||r.ejc)?(r.ano||r.ejc)+" — ":"")+r.eq+(r.coord?" (Coordenador)":""))).join("<br>"),true):"";
     const foraHTML=(f.serviuFora||[]).length?rowHTML("Já serviu fora",(f.serviuFora||[]).map(e=>esc(labelServiuFora(e))).join("<br>"),true):"";
     const neuroStr=(f.neuro||[]).map(n=>n==="Outra"?(f.neuroOutra||"Outra"):n).join(", ");
     corpo=[
@@ -1808,7 +1809,7 @@ function PersonDetailBody({ person }){
           {(f.equipesCalifornia&&f.equipesCalifornia.length>0) && <div style={{marginTop:16}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>{f.fezCalifornia===true?"Equipes que serviu":"Equipe que serviu"}</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {f.equipesCalifornia.map((r,i)=>(
+              {[...f.equipesCalifornia].sort((a,b)=>(numeroEdicao(b.ano||b.ejc)||0)-(numeroEdicao(a.ano||a.ejc)||0)).map((r,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
                   {(r.ano||r.ejc) && <Badge tone="brand">{r.ano||r.ejc}</Badge>}<span style={{flex:1,fontWeight:600,fontSize:14,minWidth:100}}>{r.eq}</span>
                   {r.coord && <Badge tone="yellow" dot>Coordenador</Badge>}
@@ -1885,7 +1886,7 @@ function SaudeTioBloco({ f, pref }){
 }
 
 function TioDetailBody({ f }){
-  const equipes=(f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[];
+  const equipes=[...((f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[])].sort((a,b)=>(numeroEdicao(b.ejc)||0)-(numeroEdicao(a.ejc)||0));
   return <>
     <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
       <div style={parGrid}>
