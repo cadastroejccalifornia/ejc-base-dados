@@ -1310,12 +1310,17 @@ function CorteBloco({ titulo, itens, onRemover }){
 }
 function MontagemSheet({ montagem, onBack }){
   const { jovens, tios, setMontagemCell, setVisibilidadeMontagem, addRowSection, removeRowSection, moverParaCorte, removerDoCorte } = useStore();
+  useLucide();
   const [tab,setTab]=useState(MONTAGEM_TABS[0]);
   const [mostrarCorte,setMostrarCorte]=useState(false);
   const [exportOpen,setExportOpen]=useState(false);
   const [aplicarEjcOpen,setAplicarEjcOpen]=useState(false);
   const [busyVisib,setBusyVisib]=useState(false);
-  const tornarPublica=async ()=>{ setBusyVisib(true); await setVisibilidadeMontagem(montagem.id,"Todos com acesso"); setBusyVisib(false); };
+  const alternarVisibilidade=async ()=>{
+    setBusyVisib(true);
+    await setVisibilidadeMontagem(montagem.id, montagem.visib==="Só o proprietário"?"Todos com acesso":"Só o proprietário");
+    setBusyVisib(false);
+  };
   const setPerson=(rowKey,person)=>setMontagemCell(montagem.id,tab,rowKey,person);
   const teamData=(montagem.cells&&montagem.cells[tab])||{};
   // pool de busca: jovens + casais de tios — um casal de tios ocupa uma linha só (já é uma "pessoa" na planilha)
@@ -1380,7 +1385,7 @@ function MontagemSheet({ montagem, onBack }){
     <Header title={montagem.nome}
       sub={(montagem.ejc?(montagem.ejc+" · "):"")+"Responsável: "+montagem.autor+" · "+montagem.visib}
       right={<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {montagem.visib==="Só o proprietário" && <Button variant="secondary" iconLeft={<Icon name="globe" size={16}/>} onClick={tornarPublica} disabled={busyVisib} style={{opacity:busyVisib?.7:1}}>{busyVisib?"Alterando...":"Tornar pública"}</Button>}
+        <Button variant="secondary" iconLeft={<Icon name={montagem.visib==="Só o proprietário"?"globe":"lock"} size={16}/>} onClick={alternarVisibilidade} disabled={busyVisib} style={{opacity:busyVisib?.7:1}}>{busyVisib?"Alterando...":(montagem.visib==="Só o proprietário"?"Tornar pública":"Tornar só do proprietário")}</Button>
         <Button variant="secondary" iconLeft={<Icon name="graduation-cap" size={16}/>} onClick={()=>setAplicarEjcOpen(true)}>Adicionar EJC à ficha dos integrantes</Button>
         <Button variant="primary" iconLeft={<Icon name="download" size={16}/>} onClick={()=>setExportOpen(true)}>Exportar</Button>
         <Button variant="secondary" iconLeft={<Icon name="arrow-left" size={16}/>} onClick={onBack}>Voltar às montagens</Button>
