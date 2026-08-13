@@ -1486,11 +1486,14 @@ function NovaMontagemModal({ onClose, onCreate }){
 }
 
 function Montagem(){
-  const { montagens, addMontagem } = useStore();
-  const [openId,setOpenId]=useState(null); // id da montagem aberta
+  const { montagens, addMontagem, loading } = useStore();
+  // guarda qual montagem estava aberta pra sobreviver a um F5
+  const [openId,setOpenIdRaw]=useState(()=>localStorage.getItem("ejc.montagemAberta")||null);
+  const setOpenId=id=>{ setOpenIdRaw(id); if(id) localStorage.setItem("ejc.montagemAberta",id); else localStorage.removeItem("ejc.montagemAberta"); };
   const [modal,setModal]=useState(false);
   const openMont = montagens.find(m=>m.id===openId);
 
+  if(openId && !openMont && loading) return null; // ainda carregando os dados — evita "piscar" a lista vazia
   if(openMont) return <MontagemSheet montagem={openMont} onBack={()=>setOpenId(null)}/>;
 
   const countFilled = m => Object.values(m.cells||{}).reduce((s,tab)=>s+Object.keys(tab).length,0);
@@ -3360,7 +3363,9 @@ function App({ user, onLogout }){
   // Configurações é exclusivo do admin dono (por e-mail), não de qualquer dirigente
   // Fica sempre dentro do menu do avatar (RailAvatarMenu), tanto no celular quanto no desktop
   const isOwner = user && SUPER_ADMINS.includes((user.email||"").trim().toLowerCase());
-  const [view,setView]=useState("inicio");
+  // guarda a última tela vista pra sobreviver a um F5 (recarregar a página não deve voltar pro Início)
+  const [view,setView]=useState(()=>localStorage.getItem("ejc.ultimaTela")||"inicio");
+  useEffect(()=>{ localStorage.setItem("ejc.ultimaTela",view); },[view]);
   const [chooserOpen,setChooserOpen]=useState(false); // "Sou Jovem" / "Sou casal de tios"
   const [cadKind,setCadKind]=useState(null); // "jovem" | "tios" — form de novo cadastro aberto
   const [senhaOpen,setSenhaOpen]=useState(false);

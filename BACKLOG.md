@@ -64,5 +64,11 @@ Cada item tem um número fixo (referenciar em commits). Status: `[ ]` pendente, 
   - **Detalhe técnico importante:** a ação é segura de rodar de novo (upsert) — se a pessoa já tiver uma entrada dessa mesma edição na ficha, ela é substituída, não duplicada.
   - **Limite assumido:** "já fez EJC anterior" considera jovens que fizeram o EJC no Califórnia (campo próprio) OU qualquer jovem/tio que já tenha uma entrada de serviço numa edição mais antiga. Jovens "de fora" que nunca serviram nem fizeram Califórnia não entram nessa lista automática (não tem como saber que "deveriam" ter servido). Se isso não bater com o que você esperava, me avisa que eu ajusto o critério.
 
+## Extras (fora da lista original, pedidos durante a execução)
+- [x] **X1.** Ícones sumindo na Montagem (X, tesoura, lixeira ficavam em branco ao trocar de aba/linha). ✅ 2026-08-12 — `MontagemSheet` não chamava `useLucide()`.
+- [x] **X2.** Cards de "Últimos jovens/tios": 3 por card, nome resumido (nome+sobrenome) só no jovem, apelido acima do telefone só no jovem, tios mantêm o nome completo do casal, cards do mesmo tamanho. ✅ 2026-08-12
+- [x] **X3.** Montagem pública: dar opção de voltar a ser só do proprietário (antes só dava pra ir privada→pública). ✅ 2026-08-12
+- [x] **X4.** Recarregar a página (F5) sempre voltava pro Início, perdendo o lugar onde a pessoa estava. ✅ 2026-08-12 — última tela (e, se for Montagem, qual montagem estava aberta) agora fica salva no navegador (`localStorage`) e é restaurada ao recarregar.
+
 ---
 **Convenção de commits:** referenciar o número do item, ex: `git commit -m "A2: remove conceito de pessoa ativa/inativa"`.
