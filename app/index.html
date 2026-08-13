@@ -161,6 +161,11 @@ function tioToRow(t){
   if(t.user_id) row.user_id=t.user_id;
   return row;
 }
+// nome curto pra cards de listagem: primeiro nome + último sobrenome (evita nomes completos longos)
+function nomeESobrenome(nome){
+  const partes=(nome||"").trim().split(/\s+/);
+  return partes.length>1 ? partes[0]+" "+partes[partes.length-1] : (partes[0]||"");
+}
 // nome/apelido curto de uma pessoa do casal (usado no nome do card) — tira "tio"/"tia" do
 // apelido se a pessoa tiver respondido com a palavra junto (o rótulo já vem antes: "Tia "/"Tio ")
 function apelidoOuPrimeiro(nome,apelido){
@@ -805,31 +810,33 @@ function Calendario({ readonly, compacto }){
    INÍCIO (página principal)
    ====================================================================== */
 // lista de "últimos cadastros" reusada pros cards de jovens e de tios do Início
-function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTodos }){
-  return <Card title={title} subtitle={"Os 2 cadastros mais recentes"} action={<button onClick={onVerTodos} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver todos<Icon name="chevron-right" size={15}/></button>}>
+function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTodos, mostrarApelido }){
+  return <Card title={title} subtitle={"Os "+pessoas.length+" cadastros mais recentes"} action={<button onClick={onVerTodos} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver todos<Icon name="chevron-right" size={15}/></button>}>
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {pessoas.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
-      {pessoas.map((p,i)=>(
-        <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
+      {pessoas.map((p,i)=>{
+        const apelido = mostrarApelido && p.ficha && p.ficha.apelido;
+        return <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
           <Avatar src={p.foto} name={p.n} size={48}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{p.n}<Icon name="chevron-right" size={15}/></div>
+            <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{nomeESobrenome(p.n)}<Icon name="chevron-right" size={15}/></div>
+            {apelido && <div style={{fontSize:12.5,color:"var(--text-2)",marginTop:2}}>{apelido}</div>}
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
               <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{p.tel}</span>
               {renderTag(p)}
             </div>
           </div>
           <Icon name="chevron-right" size={18}/>
-        </div>
-      ))}
+        </div>;
+      })}
     </div>
   </Card>;
 }
 function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario, onGoJovens, onGoTios }){
   const { jovens, tios } = useStore();
   const [anivOpen,setAnivOpen]=useState(false);
-  const ultimosJovens = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,2);
-  const ultimosTios = [...tios].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,2);
+  const ultimosJovens = [...jovens].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
+  const ultimosTios = [...tios].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
   const counts = MJC_TEAMS.reduce((o,t)=>{o[t]=jovens.filter(j=>j.mjc===t).length;return o;},{});
   const totalJovens = jovens.length;
   return <div>
@@ -843,9 +850,9 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario, onGoJovens
       <EventosCard onAbrir={onOpenCalendario}/>
     </div>
 
-    {/* Linha 2: últimos cadastros (jovens/tios separados) + pessoas por equipe */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"start"}}>
-      <UltimosCadastrosCard title="Últimos jovens" pessoas={ultimosJovens} renderTag={p=><Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoJovens}/>
+    {/* Linha 2: últimos cadastros (jovens/tios separados) + pessoas por equipe — stretch pra jovens/tios ficarem do mesmo tamanho */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"stretch"}}>
+      <UltimosCadastrosCard title="Últimos jovens" pessoas={ultimosJovens} mostrarApelido renderTag={p=><Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoJovens}/>
       <UltimosCadastrosCard title="Últimos tios" pessoas={ultimosTios} renderTag={()=><Tag color="var(--cat-terracotta)">Tios</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoTios}/>
 
       {/* Quantidade por equipe do MJC */}
