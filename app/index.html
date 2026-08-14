@@ -358,6 +358,13 @@ function StoreProvider({ user, children }){
       if(!error) setTios(l=>l.map(t=>t.id===id?rowToTio(data):t));
       return { data: data?rowToTio(data):null, error };
     },
+    // liga o user_id na ficha de tios já existente (achada por e-mail) — usado quando um tio/tia vira
+    // dirigente e já tinha ficha própria preenchida antes (sem isso, o AdminGate pedia ficha nova)
+    vincularTio: async (id,userId)=>{
+      const { data, error } = await supabase.from("tios").update({user_id:userId}).eq("id",id).select().single();
+      if(!error) setTios(l=>l.map(t=>t.id===id?rowToTio(data):t));
+      return { data: data?rowToTio(data):null, error };
+    },
     // convida um novo dirigente: cria o convite (user_id ainda nulo) e manda um e-mail de acesso.
     // quando a pessoa entrar pela primeira vez com esse e-mail, o AuthedGate reivindica o convite
     // automaticamente (ligando user_id) e a obriga a completar a própria ficha.
@@ -3896,18 +3903,36 @@ function AuthedGate({ session, onLogout }){
 
 // dirigente sem ficha própria ainda (convite recém-aceito) → obriga a preencher antes do painel
 function AdminGate({ user, onLogout }){
-  const { jovens, addJovem, loading } = useStore();
+  const { jovens, tios, addJovem, addTio, vincularTio, loading } = useStore();
+  const emailL=(user.email||"").trim().toLowerCase();
   const meuJovem = jovens.find(j=>j.user_id===user.id);
+  // acha a ficha de tios pelo user_id (já vinculada) OU pelo e-mail (tia/tio que virou dirigente e
+  // já tinha ficha própria preenchida antes — sem isso, forçava preencher tudo de novo do zero)
+  const meuTio = tios.find(t=>t.user_id===user.id) || tios.find(t=>{
+    const f=t.ficha||{};
+    return !t.user_id && ((f.tiaEmail||"").trim().toLowerCase()===emailL || (f.tioEmail||"").trim().toLowerCase()===emailL);
+  });
+  const [tipoEscolhido,setTipoEscolhido]=useState(null);
   useLucide();
+  useEffect(()=>{ if(meuTio && !meuTio.user_id) vincularTio(meuTio.id, user.id); },[meuTio && meuTio.id]);
+
   if(loading) return <div style={{minHeight:"calc(100vh - 44px)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text-2)"}}>Carregando...</div>;
-  if(!meuJovem) return <FichaForm
+  if(meuJovem || meuTio) return <App user={user} onLogout={onLogout}/>;
+
+  if(!tipoEscolhido) return <TipoCadastroModal onClose={onLogout} onChoose={setTipoEscolhido}/>;
+  if(tipoEscolhido==="tios") return <TiosForm
+    overline="BEM-VINDO(A), DIRIGENTE"
+    title="Complete o cadastro dos tios"
+    saveLabel="Concluir cadastro"
+    onClose={()=>setTipoEscolhido(null)}
+    onSave={async f=>{ await addTio({...formToTio(f), user_id:user.id}); }}/>;
+  return <FichaForm
     initial={{email:user.email}}
     overline="BEM-VINDO(A), DIRIGENTE"
     title="Complete seu cadastro"
     saveLabel="Concluir cadastro"
-    onClose={onLogout}
+    onClose={()=>setTipoEscolhido(null)}
     onSave={async f=>{ await addJovem({...formToJovem(f), user_id:user.id}); }}/>;
-  return <App user={user} onLogout={onLogout}/>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<Gate/>);
