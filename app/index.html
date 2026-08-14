@@ -3162,13 +3162,21 @@ function NovoDirigenteModal({ onClose, onCreate, initial }){
 }
 
 function Dirigentes({ user, embedded, onEditPerson }){
-  const { dirigentes, jovens, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
+  const { dirigentes, jovens, tios, inviteDirigente, updateDirigenteConvite, removeDirigente } = useStore();
   const [modal,setModal]=useState(false);
   const [editando,setEditando]=useState(null); // convite pendente sendo corrigido
   const [confirmar,setConfirmar]=useState(null); // dirigente a remover
   const confirmados = dirigentes.filter(d=>d.user_id).length;
-  // acha a própria ficha do dirigente (mesmo cadastro que ele preencheu como jovem) pra puxar a foto e editar
-  const fichaDoDirigente = d => d.user_id ? jovens.find(j=>j.user_id===d.user_id) : null;
+  // acha a própria ficha do dirigente (jovem OU casal de tios — por user_id, ou por e-mail se ainda
+  // não tiver sido vinculada) pra puxar a foto e editar
+  const fichaDoDirigente = d => {
+    if(!d.user_id) return null;
+    const emailL=(d.email||"").trim().toLowerCase();
+    return jovens.find(j=>j.user_id===d.user_id)
+      || tios.find(t=>t.user_id===d.user_id)
+      || tios.find(t=>{ const f=t.ficha||{}; return (f.tiaEmail||"").trim().toLowerCase()===emailL || (f.tioEmail||"").trim().toLowerCase()===emailL; })
+      || null;
+  };
   const inviteBtn=<Button variant="primary" iconLeft={<Icon name="user-plus" size={18}/>} onClick={()=>setModal(true)}>Convidar dirigente</Button>;
   return <div>
     {embedded
