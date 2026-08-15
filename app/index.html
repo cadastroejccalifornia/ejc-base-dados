@@ -1579,9 +1579,9 @@ function Montagem(){
    ====================================================================== */
 function InfoRow({ label, value, full }){
   if(value==null||value===""||(Array.isArray(value)&&value.length===0)) return null;
-  return <div style={{gridColumn:full?"1 / -1":"auto"}}>
+  return <div style={{gridColumn:full?"1 / -1":"auto",minWidth:0}}>
     <div style={{fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>{label}</div>
-    <div style={{fontSize:15,color:"var(--text)",fontWeight:500}}>{value}</div>
+    <div style={{fontSize:15,color:"var(--text)",fontWeight:500,overflowWrap:"anywhere"}}>{value}</div>
   </div>;
 }
 function ReadChips({ items, tone="brand" }){
