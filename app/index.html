@@ -197,8 +197,8 @@ function tiraTioTia(nome){
 }
 // campos-resumo derivados da ficha do casal de tios
 function fichaToTioFields(f){
-  const tiaLbl=apelidoOuPrimeiro(f.tiaNome,f.tiaApelido)||"Tia";
-  const tioLbl=apelidoOuPrimeiro(f.tioNome,f.tioApelido)||"Tio";
+  const tiaLbl=tiraTioTia(f.tiaNome).trim()||"Tia";
+  const tioLbl=tiraTioTia(f.tioNome).trim()||"Tio";
   const tel = f.tiaTelPrincipal ? f.tiaTel : f.tioTelPrincipal ? f.tioTel : (f.tiaTel||f.tioTel);
   const ejc = f.fezCalifornia ? (f.qualFez||"—") : (f.qualEcc||"—");
   const inst = f.musico && (f.instrumentos||[]).length ? f.instrumentos.join(", ") : null;
