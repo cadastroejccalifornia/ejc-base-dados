@@ -187,7 +187,13 @@ function nomeESobrenome(nome){
 function apelidoOuPrimeiro(nome,apelido){
   const limpo=(apelido||"").replace(/\b(tio|tia)\b/gi,"").replace(/\s+/g," ").trim();
   if(limpo) return limpo;
-  return (nome||"").trim().split(/\s+/)[0]||"";
+  return tiraTioTia(nome).split(/\s+/)[0]||"";
+}
+// tira a palavra "tio"/"tia" de dentro do nome ou apelido — a pessoa às vezes escreve "Tia Fulana"
+// no próprio campo de nome, e o rótulo "Tia "/"Tio " já é adicionado na hora de montar o card/label,
+// duplicando ("Tia Tia e Tio Tio"). Isso limpa na origem, não só na hora de exibir.
+function tiraTioTia(nome){
+  return (nome||"").replace(/\b(tio|tia)\b\.?/gi,"").replace(/\s+/g," ").trim();
 }
 // campos-resumo derivados da ficha do casal de tios
 function fichaToTioFields(f){
@@ -2422,7 +2428,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
       return;
     }
     setBusy(true);
-    const fPadronizado={...f, tiaNome:toNomeProprio(f.tiaNome), tioNome:toNomeProprio(f.tioNome), tiaApelido:toNomeProprio(f.tiaApelido), tioApelido:toNomeProprio(f.tioApelido),
+    const fPadronizado={...f, tiaNome:toNomeProprio(tiraTioTia(f.tiaNome)), tioNome:toNomeProprio(tiraTioTia(f.tioNome)), tiaApelido:toNomeProprio(tiraTioTia(f.tiaApelido)), tioApelido:toNomeProprio(tiraTioTia(f.tioApelido)),
       endereco:toEnderecoProprio(f.endereco), complemento:toEnderecoProprio(f.complemento), bairro:toEnderecoProprio(f.bairro), cidade:toEnderecoProprio(f.cidade),
       tiaEmail:(f.tiaEmail||"").trim().toLowerCase(), tioEmail:(f.tioEmail||"").trim().toLowerCase(), qualEcc:toEjcEccProprio(f.qualEcc)};
     await (onSave&&onSave(fPadronizado));
