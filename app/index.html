@@ -2082,7 +2082,7 @@ async function enviarFoto(file){
   const { data } = supabase.storage.from("fotos").getPublicUrl(path);
   return data.publicUrl;
 }
-function PhotoUpload({ value, onChange, name }){
+function PhotoUpload({ value, onChange, name, error }){
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
   const inputRef=useRef(null);
@@ -2107,7 +2107,7 @@ function PhotoUpload({ value, onChange, name }){
         {value && <IconButton label="Remover foto" variant="soft" onClick={()=>onChange(null)}><Icon name="x" size={16}/></IconButton>}
       </div>
       <input ref={inputRef} type="file" accept="image/*" onChange={escolher} style={{display:"none"}}/>
-      {err && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{err}</div>}
+      {(err||error) && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{err||error}</div>}
     </div>
   </div>;
 }
@@ -2184,6 +2184,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
   const [busy,setBusy]=useState(false);
   const handleSave=async ()=>{
     const errs={};
+    if(!f.foto) errs.foto="Adicione uma foto.";
     if(!f.nome || !f.nome.trim()) errs.nome="Informe o nome completo.";
     if(!f.whats) errs.whats="Informe o WhatsApp.";
     else if(!validaTelefone(f.whats)) errs.whats="WhatsApp inválido — use (DD) e 8 ou 9 dígitos.";
@@ -2234,9 +2235,11 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 
     <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
 
-      <Card style={{marginBottom:18}}>
-        <PhotoUpload value={f.foto} name={f.nome} onChange={url=>set("foto",url)}/>
-      </Card>
+      <div className={errors.foto?"has-error":""}>
+        <Card style={{marginBottom:18}}>
+          <PhotoUpload value={f.foto} name={f.nome} onChange={url=>set("foto",url)} error={errors.foto}/>
+        </Card>
+      </div>
 
       {/* 1. Dados pessoais */}
       <Section title="Dados pessoais" icon="user" color="var(--cat-blue)">
@@ -2411,6 +2414,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
   const handleSave=async ()=>{
     const errs={};
+    if(!f.foto) errs.foto="Adicione uma foto do casal.";
     if(!f.tiaNome||!f.tiaNome.trim()) errs.tiaNome="Informe o nome da tia.";
     if(!f.tioNome||!f.tioNome.trim()) errs.tioNome="Informe o nome do tio.";
     if(f.tiaTel && !validaTelefone(f.tiaTel)) errs.tiaTel="Telefone inválido.";
@@ -2455,9 +2459,11 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
     <div style={{maxWidth:820,margin:"0 auto",padding:"24px 22px 60px"}}>
 
-      <Card style={{marginBottom:18}}>
-        <PhotoUpload value={f.foto} name={(f.tiaNome||"")+" "+(f.tioNome||"")} onChange={url=>set("foto",url)}/>
-      </Card>
+      <div className={errors.foto?"has-error":""}>
+        <Card style={{marginBottom:18}}>
+          <PhotoUpload value={f.foto} name={(f.tiaNome||"")+" "+(f.tioNome||"")} onChange={url=>set("foto",url)} error={errors.foto}/>
+        </Card>
+      </div>
 
       {/* 1. Tia e Tio */}
       <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
