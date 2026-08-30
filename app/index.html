@@ -877,7 +877,7 @@ function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTo
         const displayName = isTio
           ? "Tia "+pickPessoa(f.tiaNome,f.tiaApelido)+" e Tio "+pickPessoa(f.tioNome,f.tioApelido)
           : ((f.apelido||"").trim()||nomeESobrenome(p.n));
-        const sub = displayName!==p.n ? p.n : null;
+        const sub = !isTio && displayName!==p.n ? p.n : null; // nome completo no subtítulo só nos jovens
         return <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
           <Avatar src={p.foto} name={p.n} size={48}/>
           <div style={{flex:1,minWidth:0}}>
