@@ -31,7 +31,7 @@
 <body>
 <div id="root"></div>
 <script type="text/plain" id="appcode">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 /* ---------- responsividade ---------- */
 function useIsMobile(bp=760){
@@ -210,6 +210,7 @@ function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.v
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
 function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, hora:r.hora||"", descricao:r.descricao, responsabilidade:r.responsabilidade }; }
+function rowToPresenca(r){ return { id:r.id, eventoId:r.evento_id, pessoaId:r.pessoa_id, tipo:r.pessoa_tipo, nome:r.nome, equipe:r.equipe, status:r.status }; }
 // responsabilidade do evento: as 5 equipes do MJC + EJC e MJC como categorias mais amplas
 const RESP_EVENTO=["EJC","MJC",...MJC_TEAMS];
 const RESP_COLOR={ EJC:"var(--brand-brown)", MJC:"var(--cat-red)", ...MJC_COLOR };
@@ -291,6 +292,7 @@ function StoreProvider({ user, children }){
   const [formularios,setFormularios]=useState([]);
   const [dirigentes,setDirigentes]=useState([]);
   const [eventos,setEventos]=useState([]);
+  const [presencas,setPresencas]=useState([]);
   const [ejcEdicoes,setEjcEdicoes]=useState(SEED_EJC_EDICOES);
   const [loading,setLoading]=useState(true);
   const isAdmin = user.role==="admin";
@@ -299,7 +301,7 @@ function StoreProvider({ user, children }){
     let active=true;
     (async ()=>{
       setLoading(true);
-      const [jRes,tRes,mRes,fRes,dRes,eRes,edRes] = await Promise.all([
+      const [jRes,tRes,mRes,fRes,dRes,eRes,edRes,pRes] = await Promise.all([
         supabase.from("jovens").select("*").order("created_at",{ascending:false}),
         supabase.from("tios").select("*").order("created_at",{ascending:false}), // membro só recebe a própria linha (RLS)
         isAdmin ? supabase.from("montagens").select("*").order("created_at",{ascending:false}) : Promise.resolve({data:[]}),
@@ -307,6 +309,7 @@ function StoreProvider({ user, children }){
         isAdmin ? supabase.from("dirigentes").select("*") : Promise.resolve({data:[]}),
         supabase.from("eventos").select("*").order("data",{ascending:true}), // membros também leem (RLS permite ver)
         supabase.from("ejc_edicoes").select("*").order("numero",{ascending:false}),
+        isAdmin ? supabase.from("presencas").select("*") : Promise.resolve({data:[]}), // listas de presença (só dirigentes marcam)
       ]);
       if(!active) return;
       setJovens((jRes.data||[]).map(rowToJovem));
@@ -315,6 +318,7 @@ function StoreProvider({ user, children }){
       setFormularios((fRes.data||[]).map(rowToForm));
       setDirigentes((dRes.data||[]).map(rowToDirigente));
       setEventos((eRes.data||[]).map(rowToEvento)); // tabela pode não existir ainda → fica vazio sem quebrar
+      setPresencas((pRes.data||[]).map(rowToPresenca)); // tabela pode não existir ainda → fica vazio sem quebrar
       if(!edRes.error && (edRes.data||[]).length) setEjcEdicoes(edRes.data); // senão fica na semente (tabela ainda não existe/vazia)
       setLoading(false);
     })();
@@ -326,7 +330,7 @@ function StoreProvider({ user, children }){
   const ejcListSimples = ejcEdicoes.map(e=>toRoman(e.numero)+" EJC");
 
   const api={
-    jovens, tios, montagens, formularios, dirigentes, eventos, loading,
+    jovens, tios, montagens, formularios, dirigentes, eventos, presencas, loading,
     ejcEdicoes, ejcYears, ejcListSimples,
     addEjcEdicao: async (ano)=>{
       const numero = Math.max(0,...ejcEdicoes.map(e=>e.numero)) + 1;
@@ -411,6 +415,28 @@ function StoreProvider({ user, children }){
     removeEvento: async (id)=>{
       const { error } = await supabase.from("eventos").delete().eq("id",id);
       if(!error) setEventos(l=>l.filter(e=>e.id!==id));
+      return { error };
+    },
+    // ---- presença (lista de chamada por evento) ----
+    addPresenca: async (p)=>{
+      const { data, error } = await supabase.from("presencas").insert({ evento_id:p.eventoId, pessoa_id:p.pessoaId, pessoa_tipo:p.tipo, nome:p.nome||null, equipe:p.equipe||null, status:p.status||"presente" }).select().single();
+      if(!error && data) setPresencas(l=>[...l.filter(x=>x.id!==data.id), rowToPresenca(data)]);
+      return { data:data?rowToPresenca(data):null, error };
+    },
+    updatePresenca: async (id,status)=>{
+      const { data, error } = await supabase.from("presencas").update({ status }).eq("id",id).select().single();
+      if(!error && data) setPresencas(l=>l.map(x=>x.id===id?rowToPresenca(data):x));
+      return { error };
+    },
+    removePresenca: async (id)=>{
+      const { error } = await supabase.from("presencas").delete().eq("id",id);
+      if(!error) setPresencas(l=>l.filter(x=>x.id!==id));
+      return { error };
+    },
+    // recarrega a presença de um evento — pega o que outros dirigentes lançaram em tempos diferentes
+    refreshPresencas: async (eventoId)=>{
+      const { data, error } = await supabase.from("presencas").select("*").eq("evento_id",eventoId);
+      if(!error) setPresencas(l=>[...l.filter(x=>x.eventoId!==eventoId), ...(data||[]).map(rowToPresenca)]);
       return { error };
     },
     addMontagem: async (m)=>{
@@ -859,6 +885,168 @@ function Calendario({ readonly, compacto }){
         </div>
       </div>
     </div>}
+  </div>;
+}
+
+/* ======================================================================
+   EVENTOS + LISTA DE PRESENÇA (área do dirigente)
+   ====================================================================== */
+const normBusca = s => (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+const grpColor = k => k==="Tios" ? "var(--cat-terracotta)" : k==="Sem equipe" ? "var(--text-3)" : mjcColor(k);
+const ordemEquipe = [...MJC_TEAMS,"Sem equipe","Tios"];
+
+function Eventos({ onOpenPerson }){
+  const { eventos, presencas } = useStore();
+  const [selId,setSelId]=useState(null);
+  const hojeStr=ymd(new Date());
+  useLucide();
+  const evento = selId ? eventos.find(e=>e.id===selId) : null;
+  if(evento) return <ChamadaEvento evento={evento} onVoltar={()=>setSelId(null)} onOpenPerson={onOpenPerson}/>;
+
+  const ordenados=[...eventos].sort((a,b)=>{ const af=a.data>=hojeStr, bf=b.data>=hojeStr; if(af!==bf) return af?-1:1; return af ? a.data.localeCompare(b.data) : b.data.localeCompare(a.data); });
+  return <div>
+    <Header title="Eventos" sub="Abra um evento e faça a lista de presença"/>
+    <Card>
+      {ordenados.length===0
+        ? <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum evento ainda. Crie um no <b>Calendário</b>.</div>
+        : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {ordenados.map(e=>{
+              const n=presencas.filter(p=>p.eventoId===e.id).length;
+              const futuro=e.data>=hojeStr;
+              return <div key={e.id} onClick={()=>setSelId(e.id)} title="Abrir lista de presença" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
+                <span style={{width:46,textAlign:"center",flex:"0 0 auto"}}>
+                  <div style={{fontSize:19,fontWeight:800,lineHeight:1,color:futuro?"var(--brand-brown)":"var(--text-3)"}}>{e.data.slice(8,10)}</div>
+                  <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{MESES_PT[+e.data.slice(5,7)-1].slice(0,3)}</div>
+                </span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
+                    {e.hora && <span style={{fontSize:13,color:"var(--text-2)",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><Icon name="clock" size={13}/>{e.hora}</span>}
+                    {e.responsabilidade && <Tag color={RESP_COLOR[e.responsabilidade]}>{e.responsabilidade}</Tag>}
+                  </div>
+                  <div style={{fontSize:12.5,color:"var(--text-2)",marginTop:3,display:"inline-flex",alignItems:"center",gap:5}}><Icon name="users" size={13}/>{n===0?"Sem presença lançada":n+(n===1?" pessoa na lista":" pessoas na lista")}</div>
+                </div>
+                <Icon name="chevron-right" size={18}/>
+              </div>;
+            })}
+          </div>}
+    </Card>
+  </div>;
+}
+
+function ChamadaEvento({ evento, onVoltar, onOpenPerson }){
+  const { jovens, tios, presencas, addPresenca, updatePresenca, removePresenca, refreshPresencas } = useStore();
+  const [q,setQ]=useState("");
+  const [agrupar,setAgrupar]=useState(true);
+  const [busy,setBusy]=useState(false);
+  useLucide();
+  useEffect(()=>{ refreshPresencas(evento.id); },[evento.id]); // pega o que outros dirigentes lançaram
+
+  // pool de busca: jovens + casais de tios
+  const pool=useMemo(()=>{
+    const arr=[];
+    jovens.forEach(j=>arr.push({ pessoaId:j.id, tipo:"jovem", nome:j.n, apelido:(j.ficha&&j.ficha.apelido)||"", foto:j.foto, equipe:(j.mjc&&j.mjc!=="—")?j.mjc:"Sem equipe" }));
+    tios.forEach(t=>arr.push({ pessoaId:t.id, tipo:"tio", nome:t.n, apelido:"", foto:t.foto, equipe:"Tios" }));
+    return arr;
+  },[jovens,tios]);
+  const poolById=useMemo(()=>{ const m={}; pool.forEach(p=>m[p.pessoaId]=p); return m; },[pool]);
+  const nomeDe=p=>{ const e=poolById[p.pessoaId]; if(e&&e.tipo==="jovem") return (e.apelido||"").trim()||nomeESobrenome(e.nome); if(e) return e.nome; return p.nome||"—"; };
+  const fotoDe=p=>{ const e=poolById[p.pessoaId]; return e?e.foto:null; };
+  const pessoaDe=p=>{ const e=poolById[p.pessoaId]; if(!e) return null; return e.tipo==="tio"?tios.find(t=>t.id===p.pessoaId):jovens.find(j=>j.id===p.pessoaId); };
+
+  const doEvento=presencas.filter(p=>p.eventoId===evento.id);
+  const addedIds=new Set(doEvento.map(p=>p.pessoaId));
+  const termo=normBusca(q.trim());
+  const matches = termo.length>=2 ? pool.filter(p=>!addedIds.has(p.pessoaId) && (normBusca(p.nome).includes(termo)||normBusca(p.apelido).includes(termo))).slice(0,8) : [];
+
+  const add=async p=>{ if(busy) return; setBusy(true); await addPresenca({ eventoId:evento.id, pessoaId:p.pessoaId, tipo:p.tipo, nome:p.nome, equipe:p.equipe, status:"presente" }); setBusy(false); setQ(""); };
+
+  // agrupamento por equipe
+  const by={}; doEvento.forEach(p=>{ const k=p.equipe||"Sem equipe"; (by[k]=by[k]||[]).push(p); });
+  const grupos=Object.keys(by).sort((a,b)=>{ const ia=ordemEquipe.indexOf(a), ib=ordemEquipe.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); })
+    .map(k=>({ equipe:k, itens:by[k].slice().sort((a,b)=>normBusca(nomeDe(a)).localeCompare(normBusca(nomeDe(b)))) }));
+  const listaPlana=doEvento.slice().sort((a,b)=>normBusca(nomeDe(a)).localeCompare(normBusca(nomeDe(b))));
+  const totalPres=doEvento.filter(p=>p.status==="presente").length;
+  const totalJust=doEvento.filter(p=>p.status==="justificado").length;
+
+  const pill=(on,color)=>({border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:12,fontWeight:700,padding:"5px 10px",borderRadius:"var(--r-pill)",background:on?color:"var(--surface-2)",color:on?"#fff":"var(--text-2)"});
+  const linha=p=>(
+    <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"9px 12px"}}>
+      <Avatar src={fotoDe(p)} name={p.nome} size={38}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div onClick={()=>{ const pessoa=pessoaDe(p); if(pessoa&&onOpenPerson) onOpenPerson(pessoa); }} style={{fontWeight:700,fontSize:14,cursor:pessoaDe(p)?"pointer":"default",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{nomeDe(p)}</div>
+        {!agrupar && <div style={{fontSize:11.5,color:"var(--text-3)",marginTop:1}}>{p.equipe}</div>}
+      </div>
+      <div style={{display:"flex",gap:6,flex:"0 0 auto",alignItems:"center"}}>
+        <button onClick={()=>updatePresenca(p.id,"presente")} style={pill(p.status==="presente","var(--cat-olive)")}>Presente</button>
+        <button onClick={()=>updatePresenca(p.id,"justificado")} style={pill(p.status==="justificado","var(--cat-yellow)")}>Justif.</button>
+        <IconButton label="Remover da lista" size={30} variant="soft" onClick={()=>removePresenca(p.id)}><Icon name="x" size={14}/></IconButton>
+      </div>
+    </div>
+  );
+
+  return <div>
+    <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:18}}>
+      <IconButton label="Voltar" variant="soft" onClick={onVoltar}><Icon name="arrow-left" size={18}/></IconButton>
+      <div style={{flex:1,minWidth:0}}>
+        <div className="mono-overline">LISTA DE PRESENÇA</div>
+        <h1 style={{margin:"2px 0 0",fontSize:22,fontWeight:800,letterSpacing:"-.02em",overflowWrap:"anywhere"}}>{evento.titulo}</h1>
+        <div style={{fontSize:13.5,color:"var(--text-2)",marginTop:4,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Icon name="calendar-days" size={14}/>{fmtDataBR(evento.data)}</span>
+          {evento.hora && <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Icon name="clock" size={14}/>{evento.hora}</span>}
+          {evento.responsabilidade && <Tag color={RESP_COLOR[evento.responsabilidade]}>{evento.responsabilidade}</Tag>}
+        </div>
+      </div>
+    </div>
+
+    <Card style={{marginBottom:16}}>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:7}}>Adicionar à lista <span style={{color:"var(--text-3)",fontWeight:500}}>· busque por nome ou apelido (jovens e tios)</span></label>
+      <div style={{position:"relative"}}>
+        <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text-3)",pointerEvents:"none"}}><Icon name="search" size={16}/></div>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Digite ao menos 2 letras..." style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px 12px 38px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}/>
+      </div>
+      {termo.length>=2 && <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+        {matches.length===0
+          ? <div style={{fontSize:13,color:"var(--text-3)",padding:"6px 4px"}}>Ninguém encontrado (ou já está na lista).</div>
+          : matches.map(p=>(
+              <button key={p.pessoaId} onClick={()=>add(p)} disabled={busy} style={{display:"flex",alignItems:"center",gap:11,background:"var(--surface-2)",border:"none",borderRadius:"var(--r-md)",padding:"8px 12px",cursor:"pointer",textAlign:"left",width:"100%"}}>
+                <Avatar src={p.foto} name={p.nome} size={34}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.tipo==="jovem"?((p.apelido||"").trim()||nomeESobrenome(p.nome)):p.nome}</div>
+                  <div style={{fontSize:11.5,color:"var(--text-3)"}}>{p.equipe}</div>
+                </div>
+                <span style={{flex:"0 0 auto",color:"var(--brand-brown)",fontWeight:700,fontSize:13,display:"inline-flex",alignItems:"center",gap:4}}><Icon name="plus" size={15}/>Adicionar</span>
+              </button>
+            ))}
+      </div>}
+    </Card>
+
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:13,fontWeight:700,background:"var(--cat-olive)",color:"#fff",borderRadius:"var(--r-pill)",padding:"4px 11px"}}>{totalPres} presente{totalPres===1?"":"s"}</span>
+        {totalJust>0 && <span style={{fontSize:13,fontWeight:700,background:"var(--cat-yellow)",color:"#fff",borderRadius:"var(--r-pill)",padding:"4px 11px"}}>{totalJust} justificado{totalJust===1?"":"s"}</span>}
+      </div>
+      <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",fontWeight:600}}>
+        <input type="checkbox" checked={agrupar} onChange={e=>setAgrupar(e.target.checked)}/> Agrupar por equipe
+      </label>
+    </div>
+
+    {doEvento.length===0
+      ? <Card><div style={{padding:"26px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Ninguém na lista ainda. Use a busca acima e vá adicionando quem chegou.</div></Card>
+      : agrupar
+        ? <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {grupos.map(g=>(
+              <Card key={g.equipe}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                  <span style={{width:12,height:12,borderRadius:"50%",background:grpColor(g.equipe),flex:"0 0 auto"}}/>
+                  <h3 style={{margin:0,fontSize:15,fontWeight:800}}>{g.equipe}</h3>
+                  <span style={{fontSize:12,fontWeight:700,color:"var(--text-3)"}}>{g.itens.length}</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>{g.itens.map(linha)}</div>
+              </Card>
+            ))}
+          </div>
+        : <Card><div style={{display:"flex",flexDirection:"column",gap:8}}>{listaPlana.map(linha)}</div></Card>}
   </div>;
 }
 
@@ -3476,6 +3664,7 @@ const NAV=[
   {id:"form",label:"Novo formulário",icon:"file-plus-2"},
   {id:"relatorios",label:"Relatórios",icon:"bar-chart-3"},
   {id:"calendario",label:"Calendário",icon:"calendar-days"},
+  {id:"eventos",label:"Eventos",icon:"clipboard-check"},
 ];
 // e-mails com acesso à aba Configurações (senhas + dirigentes) — exclusivo do admin dono
 const SUPER_ADMINS=["cadastro.ejccalifornia@gmail.com"];
@@ -3530,6 +3719,7 @@ function App({ user, onLogout }){
   else if(view==="form") screen=<NovoFormulario/>;
   else if(view==="relatorios") screen=<Relatorios/>;
   else if(view==="calendario") screen=<Calendario/>;
+  else if(view==="eventos") screen=<Eventos onOpenPerson={openPerson}/>;
   else if(view==="config" && isOwner) screen=<Configuracoes user={user} onEditPerson={p=>setEditPerson(p)}/>;
   else screen=<Inicio onNovo={openCadChooser} onOpenPerson={openPerson} onOpenTeam={openTeam} onOpenCalendario={()=>go("calendario")} onGoJovens={()=>go("jovens")} onGoTios={()=>go("tios")}/>;
 
