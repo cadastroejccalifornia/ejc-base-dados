@@ -209,7 +209,7 @@ function rowToMontagem(r){ return { id:r.id, nome:r.nome, autor:r.autor, visib:r
 function montagemToRow(m){ return { nome:m.nome, autor:m.autor, visibilidade:m.visib, ejc:m.ejc||null }; }
 function rowToForm(r){ return { id:r.id, nome:r.nome, favorito:r.favorito, sistema:r.sistema, campos:r.campos||[] }; }
 function rowToDirigente(r){ return { id:r.id, user_id:r.user_id, nome:r.nome, email:r.email, cargo:r.cargo }; }
-function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, descricao:r.descricao, responsabilidade:r.responsabilidade }; }
+function rowToEvento(r){ return { id:r.id, titulo:r.titulo, data:r.data, hora:r.hora||"", descricao:r.descricao, responsabilidade:r.responsabilidade }; }
 // responsabilidade do evento: as 5 equipes do MJC + EJC e MJC como categorias mais amplas
 const RESP_EVENTO=["EJC","MJC",...MJC_TEAMS];
 const RESP_COLOR={ EJC:"var(--brand-brown)", MJC:"var(--cat-red)", ...MJC_COLOR };
@@ -399,12 +399,12 @@ function StoreProvider({ user, children }){
       return { error };
     },
     addEvento: async (ev)=>{
-      const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).select().single();
+      const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, hora:ev.hora||null, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).select().single();
       if(!error) setEventos(l=>[...l,rowToEvento(data)].sort((a,b)=>a.data.localeCompare(b.data)));
       return { data: data?rowToEvento(data):null, error };
     },
     updateEvento: async (id,ev)=>{
-      const { data, error } = await supabase.from("eventos").update({ titulo:ev.titulo, data:ev.data, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).eq("id",id).select().single();
+      const { data, error } = await supabase.from("eventos").update({ titulo:ev.titulo, data:ev.data, hora:ev.hora||null, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).eq("id",id).select().single();
       if(!error) setEventos(l=>l.map(e=>e.id===id?rowToEvento(data):e).sort((a,b)=>a.data.localeCompare(b.data)));
       return { data: data?rowToEvento(data):null, error };
     },
@@ -593,7 +593,7 @@ function EventosCard({ onAbrir }){
             <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{MESES_PT[+e.data.slice(5,7)-1].slice(0,3)} · {diaSemanaDe(e.data)}</div>
           </span>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:14}}>{e.titulo}{ehHoje?" · Hoje":""}</div>
+            <div style={{fontWeight:700,fontSize:14}}>{e.titulo}{e.hora?" · "+e.hora:""}{ehHoje?" · Hoje":""}</div>
             {e.descricao && <div style={{fontSize:12.5,color:"var(--text-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.descricao}</div>}
           </div>
         </div>;
@@ -624,7 +624,7 @@ function EventosResumoMembro(){
                 <div style={{fontSize:10,color:"var(--text-3)",textTransform:"uppercase"}}>{diaSemanaDe(e.data)}</div>
               </span>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:700,fontSize:14}}>{e.titulo}{ehHoje?" · Hoje":""}</div>
+                <div style={{fontWeight:700,fontSize:14}}>{e.titulo}{e.hora?" · "+e.hora:""}{ehHoje?" · Hoje":""}</div>
                 {e.descricao && <div style={{fontSize:12.5,color:"var(--text-2)",marginTop:2,whiteSpace:"pre-wrap"}}>{e.descricao}</div>}
               </div>
             </div>;
@@ -730,6 +730,7 @@ function NovoEventoModal({ dataInicial, initial, onClose, onSave }){
   const editing = !!initial;
   const [titulo,setTitulo]=useState(initial?.titulo||"");
   const [data,setData]=useState(initial?.data||dataInicial||"");
+  const [hora,setHora]=useState(initial?.hora||"");
   const [descricao,setDescricao]=useState(initial?.descricao||"");
   const [responsabilidade,setResponsabilidade]=useState(initial?.responsabilidade||"");
   const [errs,setErrs]=useState({});
@@ -739,7 +740,7 @@ function NovoEventoModal({ dataInicial, initial, onClose, onSave }){
     const e={}; if(!titulo.trim()) e.titulo="Informe o título."; if(!data) e.data="Escolha a data.";
     setErrs(e); if(Object.keys(e).length) return;
     setBusy(true);
-    const r=await onSave({titulo:titulo.trim(),data,descricao:descricao.trim(),responsabilidade:responsabilidade||null});
+    const r=await onSave({titulo:titulo.trim(),data,hora:hora||null,descricao:descricao.trim(),responsabilidade:responsabilidade||null});
     setBusy(false);
     if(r&&r.error){ const msg=r.error.message||""; setErrs({titulo:(r.error.code==="42P01"||/does not exist|schema cache|relation/i.test(msg))?"A tabela de eventos ainda não existe no Supabase — rode a migração e tente de novo.":msg}); return; }
     onClose();
@@ -755,6 +756,9 @@ function NovoEventoModal({ dataInicial, initial, onClose, onSave }){
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Data</label>
       <input type="date" value={data} onChange={e=>{setData(e.target.value);setErrs(x=>({...x,data:null}));}} style={inp(errs.data)}/>
       {errs.data && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:6,fontWeight:600}}>{errs.data}</div>}
+      <div style={{height:14}}/>
+      <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Horário <span style={{color:"var(--text-3)",fontWeight:500}}>· opcional</span></label>
+      <input type="time" value={hora} onChange={e=>setHora(e.target.value)} style={inp(false)}/>
       <div style={{height:14}}/>
       <label style={{display:"block",fontSize:13,fontWeight:600,marginBottom:6}}>Responsabilidade <span style={{color:"var(--text-3)",fontWeight:500}}>· opcional</span></label>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -830,6 +834,7 @@ function Calendario({ readonly, compacto }){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{fontWeight:700,fontSize:15}}>{e.titulo}</div>
+                    {e.hora && <span style={{fontSize:13,color:"var(--text-2)",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><Icon name="clock" size={13}/>{e.hora}</span>}
                     {e.responsabilidade && <Tag color={RESP_COLOR[e.responsabilidade]}>{e.responsabilidade}</Tag>}
                   </div>
                   {e.descricao && <div style={{fontSize:13,color:"var(--text-2)",marginTop:2,whiteSpace:"pre-wrap"}}>{e.descricao}</div>}
@@ -861,17 +866,23 @@ function Calendario({ readonly, compacto }){
    INÍCIO (página principal)
    ====================================================================== */
 // lista de "últimos cadastros" reusada pros cards de jovens e de tios do Início
-function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTodos, mostrarApelido }){
+function UltimosCadastrosCard({ title, pessoas, renderTag, onOpenPerson, onVerTodos, isTio }){
+  // título = apelido (se tiver) ou nome e sobrenome; subtítulo = nome completo (quando acrescenta info)
+  const pickPessoa=(nome,apelido)=>{ const ap=tiraTioTia(apelido||"").trim(); return ap||nomeESobrenome(tiraTioTia(nome||"")); };
   return <Card title={title} subtitle={"Os "+pessoas.length+" cadastros mais recentes"} action={<button onClick={onVerTodos} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver todos<Icon name="chevron-right" size={15}/></button>}>
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {pessoas.length===0 && <div style={{padding:"28px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhum cadastro ainda.</div>}
       {pessoas.map((p,i)=>{
-        const apelido = mostrarApelido && p.ficha && p.ficha.apelido;
+        const f=p.ficha||{};
+        const displayName = isTio
+          ? "Tia "+pickPessoa(f.tiaNome,f.tiaApelido)+" e Tio "+pickPessoa(f.tioNome,f.tioApelido)
+          : ((f.apelido||"").trim()||nomeESobrenome(p.n));
+        const sub = displayName!==p.n ? p.n : null;
         return <div key={p.id||i} onClick={()=>onOpenPerson&&onOpenPerson(p)} title="Ver ficha" style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 16px",cursor:"pointer"}}>
           <Avatar src={p.foto} name={p.n} size={48}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{mostrarApelido?nomeESobrenome(p.n):p.n}<Icon name="chevron-right" size={15}/></div>
-            {apelido && <div style={{fontSize:12.5,color:"var(--text-2)",marginTop:2}}>{apelido}</div>}
+            <div style={{fontWeight:700,fontSize:15,color:"var(--text)",display:"inline-flex",alignItems:"center",gap:6}}>{displayName}<Icon name="chevron-right" size={15}/></div>
+            {sub && <div style={{fontSize:12.5,color:"var(--text-2)",marginTop:2}}>{sub}</div>}
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:5,flexWrap:"wrap"}}>
               <span style={{fontSize:13,color:"var(--text-2)",display:"inline-flex",alignItems:"center",gap:5}}><Icon name="phone" size={13}/>{p.tel}</span>
               {renderTag(p)}
@@ -903,8 +914,8 @@ function Inicio({ onNovo, onOpenPerson, onOpenTeam, onOpenCalendario, onGoJovens
 
     {/* Linha 2: últimos cadastros (jovens/tios separados) + pessoas por equipe — stretch pra jovens/tios ficarem do mesmo tamanho */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20,alignItems:"stretch"}}>
-      <UltimosCadastrosCard title="Últimos jovens" pessoas={ultimosJovens} mostrarApelido renderTag={p=><Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoJovens}/>
-      <UltimosCadastrosCard title="Últimos tios" pessoas={ultimosTios} renderTag={()=><Tag color="var(--cat-terracotta)">Tios</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoTios}/>
+      <UltimosCadastrosCard title="Últimos jovens" pessoas={ultimosJovens} renderTag={p=><Tag color={mjcColor(p.mjc)}>{p.mjc}</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoJovens}/>
+      <UltimosCadastrosCard title="Últimos tios" pessoas={ultimosTios} isTio renderTag={()=><Tag color="var(--cat-terracotta)">Tios</Tag>} onOpenPerson={onOpenPerson} onVerTodos={onGoTios}/>
 
       {/* Quantidade por equipe do MJC */}
       <Card title="Pessoas por equipe do MJC">
@@ -2163,7 +2174,7 @@ const parGrid = {display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260p
 
 function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfId }){
   const [f,setF]=useState({
-    sacramentos:[], serviuFora:[], instrumentos:[], equipesCalifornia:[],
+    sacramentos:[], serviuFora:[], instrumentos:[], equipesCalifornia:[], naoServiAnos:[],
     fezCalifornia:null, garcom:null, garcomOnde:"", moita:null, moitaOnde:"", moitaPapel:"", moitaPapelOutro:"", circulo:"", musico:null, mjcAtual:"",
     restrFisica:"", restrFisicaOutra:"", restrAlim:"", restrAlimOutra:"", neuro:[], neuroOutra:"",
     paisEstado:"", paiFalecido:false, maeFalecida:false,
@@ -2188,20 +2199,33 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
     if(!f.nome || !f.nome.trim()) errs.nome="Informe o nome completo.";
     if(!f.whats) errs.whats="Informe o WhatsApp.";
     else if(!validaTelefone(f.whats)) errs.whats="WhatsApp inválido — use (DD) e 8 ou 9 dígitos.";
-    if(f.nasc && !validaData(f.nasc)) errs.nasc="Data inválida — use DD/MM/AAAA.";
-    if(!f.cpf) errs.cpf="Informe o CPF.";
-    else if(!validaCPF(f.cpf)) errs.cpf="CPF inválido.";
-    else if(dupCpfMsg) errs.cpf=dupCpfMsg;
-    if(f.email && !validaEmail(f.email)) errs.email="E-mail inválido.";
+    if(!f.nasc) errs.nasc="Informe a data de nascimento.";
+    else if(!validaData(f.nasc)) errs.nasc="Data inválida — use DD/MM/AAAA.";
+    if(f.cpf && !validaCPF(f.cpf)) errs.cpf="CPF inválido.";
+    else if(f.cpf && dupCpfMsg) errs.cpf=dupCpfMsg;
+    if(!f.email) errs.email="Informe o e-mail.";
+    else if(!validaEmail(f.email)) errs.email="E-mail inválido.";
     else if(dupEmailMsg) errs.email=dupEmailMsg;
     if(!f.endereco || !f.endereco.trim()) errs.endereco="Informe o endereço atual (rua e número).";
     if(!f.bairro || !f.bairro.trim()) errs.bairro="Informe o bairro.";
     if(!f.cidade || !f.cidade.trim()) errs.cidade="Informe a cidade.";
     if(!f.paiFalecido && f.paiTel && !validaTelefone(f.paiTel)) errs.paiTel="Telefone inválido.";
     if(!f.maeFalecida && f.maeTel && !validaTelefone(f.maeTel)) errs.maeTel="Telefone inválido.";
+    if(!f.sacramentos || !f.sacramentos.length) errs.sacramentos="Marque ao menos um (ou 'Não tenho').";
     if(f.fezCalifornia!==true && f.fezCalifornia!==false) errs.fezCalifornia="Responda se fez EJC no Califórnia.";
-    else if(f.fezCalifornia===true && !f.anoEjc) errs.anoEjc="Selecione o ano que fez EJC.";
+    else if(f.fezCalifornia===true){
+      if(!f.anoEjc) errs.anoEjc="Selecione o ano que fez EJC.";
+      if(!f.circulo) errs.circulo="Selecione o seu Círculo.";
+      if(f.anoEjc){
+        const anos=anosDepoisDoEjc(f.anoEjc,ejcYears);
+        const resp=new Set([...(f.equipesCalifornia||[]).map(r=>String(r.ano)),...(f.naoServiAnos||[]).map(String)]);
+        if(anos.some(y=>!resp.has(String(y)))) errs.equipesCalifornia="Responda cada ano (equipe ou 'Não servi neste ano').";
+      }
+    }
     if(!f.mjcAtual) errs.mjcAtual="Selecione a equipe atual (ou 'Não estou em nenhuma').";
+    if(!f.restrFisica) errs.restrFisica="Informe se há restrição física.";
+    if(!f.restrAlim) errs.restrAlim="Informe restrição alimentar.";
+    if(!f.neuro || !f.neuro.length) errs.neuro="Marque ao menos uma opção.";
     setErrors(errs);
     if(Object.keys(errs).length){
       setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
@@ -2246,10 +2270,10 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         <div style={grid2}>
           <Field label="Nome completo" required span error={errors.nome}><Input value={f.nome||""} onChange={e=>set("nome",e.target.value)} error={!!errors.nome} placeholder="Nome e sobrenome"/></Field>
           <Field label="Apelido"><Input value={f.apelido||""} onChange={e=>set("apelido",e.target.value)} placeholder="Como te chamam"/></Field>
-          <Field label="Data de nascimento" error={errors.nasc}><Input value={f.nasc||""} onChange={e=>set("nasc",maskData(e.target.value))} error={!!errors.nasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
-          <Field label="CPF" required error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
+          <Field label="Data de nascimento" required error={errors.nasc}><Input value={f.nasc||""} onChange={e=>set("nasc",maskData(e.target.value))} error={!!errors.nasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+          <Field label="CPF" error={errors.cpf||dupCpfMsg}><Input value={f.cpf||""} onChange={e=>set("cpf",maskCPF(e.target.value))} error={!!(errors.cpf||dupCpfMsg)} inputMode="numeric" placeholder="000.000.000-00"/></Field>
           <Field label="WhatsApp" required error={errors.whats}><Input value={f.whats||""} onChange={e=>set("whats",maskTelefone(e.target.value))} error={!!errors.whats} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
-          <Field label="E-mail" error={errors.email||dupEmailMsg}><Input type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} error={!!(errors.email||dupEmailMsg)} placeholder="voce@email.com"/></Field>
+          <Field label="E-mail" required error={errors.email||dupEmailMsg}><Input type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} error={!!(errors.email||dupEmailMsg)} placeholder="voce@email.com"/></Field>
           <Field label="Instagram"><Input value={f.insta||""} onChange={e=>set("insta",maskInstagram(e.target.value))} placeholder="@seu.usuario"/></Field>
         </div>
         <div style={{marginTop:16}}>
@@ -2265,8 +2289,11 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
       </Section>
 
       {/* 2. Sacramentos */}
-      <Section title="Sacramentos" icon="church" color="var(--cat-plum)" desc="Marque todos que já recebeu">
-        <ChipGroup multi options={SACRAMENTOS} value={f.sacramentos} onChange={v=>set("sacramentos",v)}/>
+      <Section title="Sacramentos" icon="church" color="var(--cat-plum)" desc="Marque todos que já recebeu (ou 'Não tenho')">
+        <div className={errors.sacramentos?"has-error":""}>
+          <ChipGroup multi options={SACRAMENTOS} value={f.sacramentos} onChange={v=>set("sacramentos",v)}/>
+          {errors.sacramentos && <div style={{fontSize:12,color:"var(--brand-red)",marginTop:8,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Icon name="alert-circle" size={13}/>{errors.sacramentos}</div>}
+        </div>
       </Section>
 
       {/* 3. Família */}
@@ -2315,12 +2342,12 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
             </select>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no Califórnia" hint="Escolha a equipe de cada ano em que serviu — deixe em branco os anos que não serviu. Só aparecem anos depois do seu EJC.">
-              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} years={anosDepoisDoEjc(f.anoEjc,ejcYears)} needsYear={!f.anoEjc}/>
+            <Field label="Equipes que serviu no Califórnia" error={errors.equipesCalifornia} hint="Responda cada ano: a equipe em que serviu ou 'Não servi neste ano'. Só aparecem anos depois do seu EJC.">
+              <EquipesPorAno value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} naoServi={f.naoServiAnos} onNaoServi={v=>set("naoServiAnos",v)} years={anosDepoisDoEjc(f.anoEjc,ejcYears)} needsYear={!f.anoEjc}/>
             </Field>
           </div>
           <div style={{marginTop:16}}>
-            <Field label="Qual seu Círculo?">
+            <Field label="Qual seu Círculo?" required error={errors.circulo}>
               <ChipGroup options={CIRCULOS} value={f.circulo} onChange={v=>set("circulo",v)} leading={o=><CirculoDot nome={o}/>}/>
             </Field>
           </div>
@@ -2365,20 +2392,20 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 
       {/* 8. Saúde e restrições */}
       <Section title="Saúde e restrições" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar de você no encontro">
-        <Field label="Restrição física">
+        <Field label="Restrição física" required error={errors.restrFisica}>
           <ChipGroup options={RESTR_FISICA} value={f.restrFisica} onChange={v=>set("restrFisica",v)}/>
         </Field>
         {f.restrFisica==="Outra" && <div style={{marginTop:10,marginBottom:6}}><Input value={f.restrFisicaOutra} onChange={e=>set("restrFisicaOutra",e.target.value)} placeholder="Descreva a restrição física"/></div>}
 
         <div style={{marginTop:18}}>
-          <Field label="Restrição ou preferência alimentar">
+          <Field label="Restrição ou preferência alimentar" required error={errors.restrAlim}>
             <ChipGroup options={RESTR_ALIM} value={f.restrAlim} onChange={v=>set("restrAlim",v)}/>
           </Field>
           {f.restrAlim==="Outra" && <div style={{marginTop:10}}><Input value={f.restrAlimOutra} onChange={e=>set("restrAlimOutra",e.target.value)} placeholder="Descreva a restrição alimentar"/></div>}
         </div>
 
         <div style={{marginTop:18}}>
-          <Field label="Neurodivergências e saúde mental" hint="Marque o que se aplica">
+          <Field label="Neurodivergências e saúde mental" required error={errors.neuro} hint="Marque o que se aplica (ou 'Nenhuma condição')">
             <ChipGroup multi options={NEURO} value={f.neuro} onChange={v=>set("neuro",v)}/>
           </Field>
           {f.neuro.includes("Outra") && <div style={{marginTop:10}}><Input value={f.neuroOutra} onChange={e=>set("neuroOutra",e.target.value)} placeholder="Descreva"/></div>}
@@ -2417,15 +2444,33 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     if(!f.foto) errs.foto="Adicione uma foto do casal.";
     if(!f.tiaNome||!f.tiaNome.trim()) errs.tiaNome="Informe o nome da tia.";
     if(!f.tioNome||!f.tioNome.trim()) errs.tioNome="Informe o nome do tio.";
-    if(f.tiaTel && !validaTelefone(f.tiaTel)) errs.tiaTel="Telefone inválido.";
-    if(f.tioTel && !validaTelefone(f.tioTel)) errs.tioTel="Telefone inválido.";
-    if(f.tiaEmail && !validaEmail(f.tiaEmail)) errs.tiaEmail="E-mail inválido.";
-    if(f.tioEmail && !validaEmail(f.tioEmail)) errs.tioEmail="E-mail inválido.";
-    if(f.tiaNasc && !validaData(f.tiaNasc)) errs.tiaNasc="Data inválida — use DD/MM/AAAA.";
-    if(f.tioNasc && !validaData(f.tioNasc)) errs.tioNasc="Data inválida — use DD/MM/AAAA.";
+    if(!f.tiaTel) errs.tiaTel="Informe o telefone da tia.";
+    else if(!validaTelefone(f.tiaTel)) errs.tiaTel="Telefone inválido.";
+    if(!f.tioTel) errs.tioTel="Informe o telefone do tio.";
+    else if(!validaTelefone(f.tioTel)) errs.tioTel="Telefone inválido.";
+    if(!f.tiaEmail) errs.tiaEmail="Informe o e-mail da tia.";
+    else if(!validaEmail(f.tiaEmail)) errs.tiaEmail="E-mail inválido.";
+    if(!f.tioEmail) errs.tioEmail="Informe o e-mail do tio.";
+    else if(!validaEmail(f.tioEmail)) errs.tioEmail="E-mail inválido.";
+    if(!f.tiaNasc) errs.tiaNasc="Informe a data de nascimento da tia.";
+    else if(!validaData(f.tiaNasc)) errs.tiaNasc="Data inválida — use DD/MM/AAAA.";
+    if(!f.tioNasc) errs.tioNasc="Informe a data de nascimento do tio.";
+    else if(!validaData(f.tioNasc)) errs.tioNasc="Data inválida — use DD/MM/AAAA.";
+    if(f.matrimonio!==true && f.matrimonio!==false) errs.matrimonio="Responda se tem matrimônio.";
     if(!f.endereco || !f.endereco.trim()) errs.endereco="Informe o endereço atual (rua e número).";
     if(!f.bairro || !f.bairro.trim()) errs.bairro="Informe o bairro.";
     if(!f.cidade || !f.cidade.trim()) errs.cidade="Informe a cidade.";
+    if(f.fezCalifornia!==true && f.fezCalifornia!==false) errs.fezCalifornia="Responda se fez ECC no Califórnia.";
+    else if(f.fezCalifornia===true){
+      if(!f.qualFez) errs.qualFez="Selecione qual ECC fez.";
+      if(!(f.equipesEjc||[]).length) errs.equipesEjc="Adicione ao menos uma equipe que serviu.";
+    }
+    if(!f.tiaRestrFisica) errs.tiaRestrFisica="Informe se há restrição física.";
+    if(!f.tiaRestrAlim) errs.tiaRestrAlim="Informe restrição alimentar.";
+    if(!f.tiaNeuro || !f.tiaNeuro.length) errs.tiaNeuro="Marque ao menos uma opção.";
+    if(!f.tioRestrFisica) errs.tioRestrFisica="Informe se há restrição física.";
+    if(!f.tioRestrAlim) errs.tioRestrAlim="Informe restrição alimentar.";
+    if(!f.tioNeuro || !f.tioNeuro.length) errs.tioNeuro="Marque ao menos uma opção.";
     setErrors(errs);
     if(Object.keys(errs).length){
       setTimeout(()=>{ const el=document.querySelector(".has-error"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },30);
@@ -2475,13 +2520,13 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           <Field label="Apelido do tio"><Input value={f.tioApelido||""} onChange={e=>set("tioApelido",e.target.value)} placeholder="Como chamam o tio"/></Field>
 
           <div>
-            <Field label="Telefone da tia" error={errors.tiaTel}><Input value={f.tiaTel||""} onChange={e=>set("tiaTel",maskTelefone(e.target.value))} error={!!errors.tiaTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+            <Field label="Telefone da tia" required error={errors.tiaTel}><Input value={f.tiaTel||""} onChange={e=>set("tiaTel",maskTelefone(e.target.value))} error={!!errors.tiaTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
             <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:8}}>
               <input type="radio" name="telPrincipal" checked={!!f.tiaTelPrincipal} onChange={()=>setPrincipal("tia")}/> Telefone principal para contato
             </label>
           </div>
           <div>
-            <Field label="Telefone do tio" error={errors.tioTel}><Input value={f.tioTel||""} onChange={e=>set("tioTel",maskTelefone(e.target.value))} error={!!errors.tioTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
+            <Field label="Telefone do tio" required error={errors.tioTel}><Input value={f.tioTel||""} onChange={e=>set("tioTel",maskTelefone(e.target.value))} error={!!errors.tioTel} inputMode="tel" placeholder="(31) 90000-0000"/></Field>
             <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text-2)",cursor:"pointer",marginTop:8}}>
               <input type="radio" name="telPrincipal" checked={!!f.tioTelPrincipal} onChange={()=>setPrincipal("tio")}/> Telefone principal para contato
             </label>
@@ -2490,15 +2535,15 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           <Field label="Instagram da tia"><Input value={f.tiaInsta||""} onChange={e=>set("tiaInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
           <Field label="Instagram do tio"><Input value={f.tioInsta||""} onChange={e=>set("tioInsta",maskInstagram(e.target.value))} placeholder="@usuario"/></Field>
 
-          <Field label="Data de nascimento da tia" error={errors.tiaNasc}><Input value={f.tiaNasc||""} onChange={e=>set("tiaNasc",maskData(e.target.value))} error={!!errors.tiaNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
-          <Field label="Data de nascimento do tio" error={errors.tioNasc}><Input value={f.tioNasc||""} onChange={e=>set("tioNasc",maskData(e.target.value))} error={!!errors.tioNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+          <Field label="Data de nascimento da tia" required error={errors.tiaNasc}><Input value={f.tiaNasc||""} onChange={e=>set("tiaNasc",maskData(e.target.value))} error={!!errors.tiaNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
+          <Field label="Data de nascimento do tio" required error={errors.tioNasc}><Input value={f.tioNasc||""} onChange={e=>set("tioNasc",maskData(e.target.value))} error={!!errors.tioNasc} inputMode="numeric" placeholder="DD/MM/AAAA"/></Field>
 
-          <Field label="E-mail da tia" error={errors.tiaEmail}><Input type="email" value={f.tiaEmail||""} onChange={e=>set("tiaEmail",e.target.value)} error={!!errors.tiaEmail} placeholder="tia@email.com"/></Field>
-          <Field label="E-mail do tio" error={errors.tioEmail}><Input type="email" value={f.tioEmail||""} onChange={e=>set("tioEmail",e.target.value)} error={!!errors.tioEmail} placeholder="tio@email.com"/></Field>
+          <Field label="E-mail da tia" required error={errors.tiaEmail}><Input type="email" value={f.tiaEmail||""} onChange={e=>set("tiaEmail",e.target.value)} error={!!errors.tiaEmail} placeholder="tia@email.com"/></Field>
+          <Field label="E-mail do tio" required error={errors.tioEmail}><Input type="email" value={f.tioEmail||""} onChange={e=>set("tioEmail",e.target.value)} error={!!errors.tioEmail} placeholder="tio@email.com"/></Field>
         </div>
 
         <div style={{marginTop:20}}>
-          <Field label="Tem matrimônio?"><YesNo value={f.matrimonio} onChange={v=>set("matrimonio",v)}/></Field>
+          <Field label="Tem matrimônio?" required error={errors.matrimonio}><YesNo value={f.matrimonio} onChange={v=>set("matrimonio",v)}/></Field>
         </div>
 
         <div style={{marginTop:20}}>
@@ -2515,17 +2560,17 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
       {/* 2. ECC no Califórnia */}
       <Section title="ECC no Califórnia" icon="cross" color="var(--brand-brown)">
-        <Field label="Fez ECC no Califórnia?">
+        <Field label="Fez ECC no Califórnia?" required error={errors.fezCalifornia}>
           <YesNo value={f.fezCalifornia} onChange={v=>set("fezCalifornia",v)}/>
         </Field>
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
-          <Field label="Qual fez?">
-            <select value={f.qualFez||""} onChange={e=>{ set("qualFez",e.target.value); set("equipesEjc",[]); }} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+          <Field label="Qual fez?" required error={errors.qualFez}>
+            <select value={f.qualFez||""} onChange={e=>{ set("qualFez",e.target.value); set("equipesEjc",[]); }} style={{width:"100%",border:"none",background:errors.qualFez?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
               <option value="">Selecione...</option>{ECC_LIST.map(y=><option key={y}>{y}</option>)}
             </select>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no EJC" hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
+            <Field label="Equipes que serviu no EJC" required error={errors.equipesEjc} hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
               <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={ejcListSimples}/>
             </Field>
           </div>
@@ -2555,14 +2600,14 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 
       {/* 4. Saúde e restrições — separada por pessoa */}
       <Section title="Saúde e restrições da tia" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar da tia no encontro">
-        <Field label="Restrição física">
+        <Field label="Restrição física" required error={errors.tiaRestrFisica}>
           <ChipGroup options={RESTR_FISICA} value={f.tiaRestrFisica} onChange={v=>set("tiaRestrFisica",v)}/>
         </Field>
         {f.tiaRestrFisica==="Outra" && <div style={{marginTop:12}}>
           <Input value={f.tiaRestrFisicaOutra||""} onChange={e=>set("tiaRestrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
         </div>}
         <div style={{marginTop:18}}>
-          <Field label="Restrição ou preferência alimentar">
+          <Field label="Restrição ou preferência alimentar" required error={errors.tiaRestrAlim}>
             <ChipGroup options={RESTR_ALIM} value={f.tiaRestrAlim} onChange={v=>set("tiaRestrAlim",v)}/>
           </Field>
           {f.tiaRestrAlim==="Outra" && <div style={{marginTop:12}}>
@@ -2570,7 +2615,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           </div>}
         </div>
         <div style={{marginTop:18}}>
-          <Field label="Neurodivergências e saúde mental" hint="Pode marcar mais de uma opção">
+          <Field label="Neurodivergências e saúde mental" required error={errors.tiaNeuro} hint="Pode marcar mais de uma (ou 'Nenhuma condição')">
             <ChipGroup multi options={NEURO} value={f.tiaNeuro} onChange={v=>set("tiaNeuro",v)}/>
           </Field>
           {(f.tiaNeuro||[]).includes("Outra") && <div style={{marginTop:12}}>
@@ -2580,14 +2625,14 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
       </Section>
 
       <Section title="Saúde e restrições do tio" icon="heart-pulse" color="var(--brand-red)" desc="Dados sensíveis — usados só para cuidar do tio no encontro">
-        <Field label="Restrição física">
+        <Field label="Restrição física" required error={errors.tioRestrFisica}>
           <ChipGroup options={RESTR_FISICA} value={f.tioRestrFisica} onChange={v=>set("tioRestrFisica",v)}/>
         </Field>
         {f.tioRestrFisica==="Outra" && <div style={{marginTop:12}}>
           <Input value={f.tioRestrFisicaOutra||""} onChange={e=>set("tioRestrFisicaOutra",e.target.value)} placeholder="Descreva a restrição"/>
         </div>}
         <div style={{marginTop:18}}>
-          <Field label="Restrição ou preferência alimentar">
+          <Field label="Restrição ou preferência alimentar" required error={errors.tioRestrAlim}>
             <ChipGroup options={RESTR_ALIM} value={f.tioRestrAlim} onChange={v=>set("tioRestrAlim",v)}/>
           </Field>
           {f.tioRestrAlim==="Outra" && <div style={{marginTop:12}}>
@@ -2595,7 +2640,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           </div>}
         </div>
         <div style={{marginTop:18}}>
-          <Field label="Neurodivergências e saúde mental" hint="Pode marcar mais de uma opção">
+          <Field label="Neurodivergências e saúde mental" required error={errors.tioNeuro} hint="Pode marcar mais de uma (ou 'Nenhuma condição')">
             <ChipGroup multi options={NEURO} value={f.tioNeuro} onChange={v=>set("tioNeuro",v)}/>
           </Field>
           {(f.tioNeuro||[]).includes("Outra") && <div style={{marginTop:12}}>
@@ -2611,13 +2656,18 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 const anosDepoisDoEjc = (anoEjcStr,ejcYears) => { const a=anoDoEjc(anoEjcStr); return a ? ejcYears.filter(y=>anoDoEjc(y)>a) : []; };
 
 // mostra uma linha por ano disponível; em cada ano a pessoa escolhe a equipe (dropdown) e se foi coordenador
-function EquipesPorAno({ value, onChange, years, needsYear }){
+function EquipesPorAno({ value, onChange, naoServi, onNaoServi, years, needsYear }){
   const byAno={}; (value||[]).forEach(r=>{ byAno[r.ano]=r; });
-  const setEq=(ano,eq)=>{
-    let next=(value||[]).filter(r=>r.ano!==ano);
-    if(eq) next=[...next,{ano,eq,coord:byAno[ano]?byAno[ano].coord:false}];
-    next.sort((a,b)=>anoDoEjc(b.ano)-anoDoEjc(a.ano));
-    onChange(next);
+  const naoSet=new Set((naoServi||[]).map(String));
+  const setSel=(ano,val)=>{
+    // limpa qualquer equipe e qualquer "não servi" desse ano, depois aplica a escolha
+    let nextEq=(value||[]).filter(r=>String(r.ano)!==String(ano));
+    let nextNao=(naoServi||[]).filter(a=>String(a)!==String(ano));
+    if(val==="__nao__") nextNao=[...nextNao,String(ano)];
+    else if(val) nextEq=[...nextEq,{ano,eq:val,coord:byAno[ano]?byAno[ano].coord:false}];
+    nextEq.sort((a,b)=>anoDoEjc(b.ano)-anoDoEjc(a.ano));
+    onChange(nextEq);
+    onNaoServi&&onNaoServi(nextNao);
   };
   const setCoord=(ano,coord)=>onChange((value||[]).map(r=>r.ano===ano?{...r,coord}:r));
   if(needsYear) return <p style={{fontSize:13,color:"var(--text-3)"}}>Selecione primeiro o ano em que você fez o EJC.</p>;
@@ -2626,16 +2676,20 @@ function EquipesPorAno({ value, onChange, years, needsYear }){
   return <div style={{display:"flex",flexDirection:"column",gap:8}}>
     {years.map(y=>{
       const cur=byAno[y];
+      const served=cur && cur.eq!=="Não serviu";       // equipe de verdade (ignora sentinela da Montagem)
+      const nao=naoSet.has(String(y)) || (cur && cur.eq==="Não serviu");
+      const curVal=served?cur.eq:(nao?"__nao__":"");
       return <div key={y} style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"8px 12px"}}>
-        <span style={{flex:"0 0 auto",minWidth:120,fontSize:13,fontWeight:700,color:cur?"var(--brand-brown)":"var(--text-2)"}}>{y}</span>
+        <span style={{flex:"0 0 auto",minWidth:120,fontSize:13,fontWeight:700,color:(served||nao)?"var(--brand-brown)":"var(--text-2)"}}>{y}</span>
         <div style={{flex:"1 1 180px",minWidth:150}}>
-          <select value={cur?cur.eq:""} onChange={e=>setEq(y,e.target.value)} style={selStyle}>
-            <option value="">Não servi neste ano</option>
+          <select value={curVal} onChange={e=>setSel(y,e.target.value)} style={selStyle}>
+            <option value="">Selecione...</option>
+            <option value="__nao__">Não servi neste ano</option>
             {EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
           </select>
         </div>
-        <label style={{flex:"0 0 auto",display:"inline-flex",alignItems:"center",gap:7,fontSize:13,color:"var(--text-2)",cursor:cur?"pointer":"not-allowed",opacity:cur?1:.4}}>
-          <input type="checkbox" checked={cur?!!cur.coord:false} disabled={!cur} onChange={e=>setCoord(y,e.target.checked)}/> Coordenador
+        <label style={{flex:"0 0 auto",display:"inline-flex",alignItems:"center",gap:7,fontSize:13,color:"var(--text-2)",cursor:served?"pointer":"not-allowed",opacity:served?1:.4}}>
+          <input type="checkbox" checked={served?!!cur.coord:false} disabled={!served} onChange={e=>setCoord(y,e.target.checked)}/> Coordenador
         </label>
       </div>;
     })}
