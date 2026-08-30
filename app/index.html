@@ -2558,6 +2558,40 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
         </div>}
       </Section>
 
+      {/* 5. Experiência de serviço */}
+      <Section title="Experiência de serviço" icon="hand-heart" color="var(--cat-olive)">
+        <Field label="Já foi garçom?">
+          <YesNo value={f.garcom} onChange={v=>set("garcom",v)}/>
+        </Field>
+        {f.garcom===true && <div style={{marginTop:14}}>
+          <Field label="Onde?"><Input value={f.garcomOnde||""} onChange={e=>set("garcomOnde",e.target.value)} placeholder="Escreva onde foi garçom"/></Field>
+        </div>}
+        <div style={{marginTop:18}}>
+          <Field label="Já foi moita?">
+            <YesNo value={f.moita} onChange={v=>set("moita",v)}/>
+          </Field>
+        </div>
+        {f.moita===true && <div style={{marginTop:14}}>
+          <Field label="Quando e onde?"><Input value={f.moitaOnde||""} onChange={e=>set("moitaOnde",e.target.value)} placeholder="Ex: IV EJC Salgado Filho"/></Field>
+          <div style={{marginTop:14}}>
+            <Field label="Qual seu papel?">
+              <ChipGroup options={PAPEIS_MOITA} value={f.moitaPapel} onChange={v=>set("moitaPapel",v)}/>
+            </Field>
+          </div>
+          {f.moitaPapel==="Outro" && <div style={{marginTop:14}}>
+            <Field label="Qual?"><Input value={f.moitaPapelOutro||""} onChange={e=>set("moitaPapelOutro",e.target.value)} placeholder="Escreva o papel"/></Field>
+          </div>}
+        </div>}
+        <div style={{marginTop:18}}>
+          <Field label="Já serviu fora?">
+            <YesNo value={(f.serviuForaFlag===true||(f.serviuForaFlag==null&&(f.serviuFora||[]).length>0))?true:(f.serviuForaFlag===false?false:null)} onChange={v=>set("serviuForaFlag",v)}/>
+          </Field>
+        </div>
+        {(f.serviuForaFlag===true||(f.serviuForaFlag!==false&&(f.serviuFora||[]).length>0)) && <div style={{marginTop:14}}>
+          <RepeatServiuFora value={f.serviuFora} onChange={v=>set("serviuFora",v)}/>
+        </div>}
+      </Section>
+
       {/* 6. MJC atual */}
       <Section title="Equipe atual do MJC" icon="layout-grid" color="var(--cat-terracotta)" desc="Obrigatório — escolha uma equipe ou 'Não estou em nenhuma'">
         <div className={errors.mjcAtual?"has-error":""}>
