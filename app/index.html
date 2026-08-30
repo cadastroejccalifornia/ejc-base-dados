@@ -3274,8 +3274,44 @@ function PessoasListModal({ title, subtitle, pessoas, onClose }){
   </div>;
 }
 
+// ranking de presença: uma linha por pessoa com a soma de eventos em que esteve presente
+const RANK_COLS="1fr 116px 66px";
+function RankHeader(){
+  return <div style={{display:"grid",gridTemplateColumns:RANK_COLS,gap:10,padding:"0 2px 8px",fontSize:11,fontWeight:700,color:"var(--text-3)",textTransform:"uppercase",letterSpacing:".04em"}}>
+    <span>Nome</span><span>Equipe</span><span style={{textAlign:"right"}}>Eventos</span>
+  </div>;
+}
+function RankRow({ pos, person, nome, equipe, qtd, first }){
+  return <div style={{display:"grid",gridTemplateColumns:RANK_COLS,alignItems:"center",gap:10,padding:"9px 2px",borderTop:first?"none":"1px solid var(--hairline)"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+      <span style={{width:20,textAlign:"center",fontWeight:800,fontSize:13,color:pos<=3?"var(--brand-brown)":"var(--text-3)",flex:"0 0 auto"}}>{pos}</span>
+      <Avatar src={person.foto} name={person.n} size={34}/>
+      <div style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{nome}</div>
+    </div>
+    <div style={{minWidth:0}}><Tag color={grpColor(equipe)}>{equipe}</Tag></div>
+    <span style={{textAlign:"right",fontWeight:800,fontSize:16}}>{qtd}</span>
+  </div>;
+}
+function RankingModal({ linhas, onClose }){
+  useLucide();
+  return <div style={{position:"fixed",inset:0,background:"rgba(42,36,31,.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:70,padding:16}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{width:560,maxWidth:"92vw",background:"var(--surface)",borderRadius:"var(--r-xl)",boxShadow:"var(--shadow-lg)",padding:"24px",maxHeight:"88vh",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:16}}>
+        <div style={{minWidth:0}}>
+          <h3 style={{margin:0,fontSize:19,fontWeight:800}}>Ranking de presença</h3>
+          <p style={{margin:"4px 0 0",fontSize:13,color:"var(--text-2)"}}>{linhas.length} pessoa{linhas.length===1?"":"s"} · por número de eventos</p>
+        </div>
+        <IconButton label="Fechar" variant="soft" onClick={onClose}><Icon name="x" size={16}/></IconButton>
+      </div>
+      {linhas.length===0
+        ? <div style={{padding:"26px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhuma presença lançada ainda.</div>
+        : <div><RankHeader/>{linhas.map((r,i)=><RankRow key={r.id} pos={i+1} person={r.person} nome={r.nome} equipe={r.equipe} qtd={r.qtd} first={i===0}/>)}</div>}
+    </div>
+  </div>;
+}
+
 function Relatorios(){
-  const { jovens, tios, ejcListSimples } = useStore();
+  const { jovens, tios, ejcListSimples, presencas } = useStore();
   const todos = [...jovens, ...tios]; // inclui casais de tios
   const musicos = todos.filter(p=>p.inst);
   // músicos por instrumento (inst pode ter vários separados por vírgula)
@@ -3287,7 +3323,22 @@ function Relatorios(){
   const teamList=MJC_TEAMS.map(t=>[t,jovens.filter(j=>j.mjc===t).length]);
   const maxTeam=Math.max(1,...teamList.map(x=>x[1]));
 
+  // ranking de presença: soma de eventos em que cada pessoa esteve PRESENTE (justificado não conta como ida)
+  const pessoaInfo={};
+  jovens.forEach(j=>pessoaInfo[j.id]={person:j, isTio:false, equipe:(j.mjc&&j.mjc!=="—")?j.mjc:"Sem equipe"});
+  tios.forEach(t=>pessoaInfo[t.id]={person:t, isTio:true, equipe:"Tios"});
+  const snapPresenca={}; (presencas||[]).forEach(p=>{ if(!snapPresenca[p.pessoaId]) snapPresenca[p.pessoaId]={nome:p.nome,equipe:p.equipe}; });
+  const countPresenca={}; (presencas||[]).forEach(p=>{ if(p.status==="presente") countPresenca[p.pessoaId]=(countPresenca[p.pessoaId]||0)+1; });
+  const ranking=Object.keys(countPresenca).map(id=>{
+    const info=pessoaInfo[id], snap=snapPresenca[id]||{};
+    const person=info?info.person:{n:snap.nome||"—",foto:null,tel:"—"};
+    const equipe=info?info.equipe:(snap.equipe||"—");
+    const nome=(info&&info.isTio)?person.n:nomeESobrenome(person.n);
+    return { id, person, equipe, nome, qtd:countPresenca[id] };
+  }).sort((a,b)=> b.qtd-a.qtd || (a.nome||"").localeCompare(b.nome||""));
+
   const [modal,setModal]=useState(null); // {title,subtitle,pessoas} | null
+  const [rankOpen,setRankOpen]=useState(false);
   const abrirPorInstrumento=inst=>setModal({
     title:"Músicos de "+inst, subtitle:instCount[inst]+" músico"+(instCount[inst]>1?"s":""),
     pessoas: musicos.filter(p=>String(p.inst).split(/,\s*/).map(x=>x.trim()).includes(inst)).map(person=>({person})),
@@ -3312,6 +3363,16 @@ function Relatorios(){
 
   return <div>
     <Header title="Relatórios" sub="Panorama dos músicos e das equipes do MJC e do EJC"/>
+
+    <Card title="Quem mais participou" subtitle="Ranking de presença nos eventos" style={{marginBottom:20}}
+      action={ranking.length>5 ? <button onClick={()=>setRankOpen(true)} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver ranking completo<Icon name="chevron-right" size={15}/></button> : null}>
+      {ranking.length===0
+        ? <div style={{padding:"26px",textAlign:"center",color:"var(--text-3)",fontSize:14}}>Nenhuma presença lançada ainda. Faça a chamada de um evento na aba <b>Eventos</b>.</div>
+        : <div onClick={()=>ranking.length>5&&setRankOpen(true)} title={ranking.length>5?"Ver ranking completo":undefined} style={{cursor:ranking.length>5?"pointer":"default"}}>
+            <RankHeader/>
+            {ranking.slice(0,5).map((r,i)=><RankRow key={r.id} pos={i+1} person={r.person} nome={r.nome} equipe={r.equipe} qtd={r.qtd} first={i===0}/>)}
+          </div>}
+    </Card>
 
     <Card title="Buscar por equipe e edição do EJC" subtitle="Quem serviu numa equipe em cada EJC do Califórnia, segundo a ficha de cada um" style={{marginBottom:20}}>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
@@ -3354,6 +3415,7 @@ function Relatorios(){
       </Card>
     </div>
     {modal && <PessoasListModal {...modal} onClose={()=>setModal(null)}/>}
+    {rankOpen && <RankingModal linhas={ranking} onClose={()=>setRankOpen(false)}/>}
   </div>;
 }
 
