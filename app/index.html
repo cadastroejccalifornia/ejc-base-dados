@@ -133,9 +133,11 @@ function numeroEdicao(label){
   const m=/^([IVXLCDM]+)\s/i.exec((label||"").trim());
   return m ? romanToInt(m[1]) : null;
 }
-// XXIX ECC, XXVIII ECC, ... até I ECC (índice 0 = mais recente = XXIX) — ECC é o encontro dos tios,
-// numeração própria e diferente do EJC (por isso não vai até XXXI como o EJC_YEARS)
-const ECC_LIST=(()=>{ const a=[]; for(let n=29;n>=1;n--) a.push(toRoman(n)+" ECC"); return a; })();
+// edições do ECC do Califórnia (encontro dos tios) — numeração própria, com lacunas (nem toda edição
+// aconteceu no Califórnia). Ordenadas da mais recente pra mais antiga. Guardam o ano pra a regra de
+// "equipes que serviu a partir do ano seguinte" funcionar (anoDoEjc lê o ano entre parênteses).
+const ECC_EDICOES=[[29,2025],[28,2024],[27,2022],[26,2019],[25,2018],[24,2017],[23,2016],[22,2015],[21,2014],[20,2013],[19,2011],[18,2010],[17,2009],[16,2008],[15,2007],[13,2001],[12,2000],[11,1999],[9,1997],[8,1996],[7,1995],[6,1994],[4,1993],[2,1992],[1,1991]];
+const ECC_LIST=ECC_EDICOES.map(([n,ano])=>toRoman(n)+" ECC ("+ano+")");
 // XXXI EJC, XXX EJC, ... até I EJC — usado só na lista de "equipes que serviu" dos tios
 // (eles podem ter servido em edições do EJC, que vai até XXXI, mesmo o ECC deles sendo outra numeração)
 // semente das edições do EJC (numero+ano) — usada só até a tabela `ejc_edicoes` ser criada/populada
@@ -1309,7 +1311,7 @@ function calcularPlanoEjc(montagem, jovens, tios){
     if(vistos.has(t.id)) return;
     const f=t.ficha||{};
     const historico=[...(f.equipesEjc||[]),...(f.equipesCalifornia||[])];
-    if(!historico.some(r=>numeroEdicao(r.ejc)<numEd)) return;
+    if(!historico.some(r=>numeroEdicao(r.ano||r.ejc)<numEd)) return;
     naoServiram.push({ person:t, isTio:true });
   });
 
@@ -1805,7 +1807,7 @@ function exportarFichaPDF(person){
   if(isTio){
     overline="Ficha dos tios";
     const equipesTio = f.fezCalifornia===true ? f.equipesEjc : f.equipesCalifornia;
-    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",[...equipesTio].sort((a,b)=>(numeroEdicao(b.ejc)||0)-(numeroEdicao(a.ejc)||0)).map(r=>esc((r.ejc?r.ejc+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
+    const equipesTioHTML=(equipesTio||[]).length?rowHTML(f.fezCalifornia===true?"Equipes que serviu no EJC":"Equipes que serviu no Califórnia",[...equipesTio].sort((a,b)=>(numeroEdicao(b.ano||b.ejc)||0)-(numeroEdicao(a.ano||a.ejc)||0)).map(r=>esc(((r.ano||r.ejc)?(r.ano||r.ejc)+" — ":"")+r.eq+(r.coord?" (Coordenação)":""))).join("<br>"),true):"";
     const neuroPessoa=pref=>(f[pref+"Neuro"]||[]).map(n=>n==="Outra"?(f[pref+"NeuroOutra"]||"Outra"):n).join(", ");
     const endTio=enderecoCompleto(f);
     corpo=[
@@ -2076,7 +2078,7 @@ function PersonDetailBody({ person }){
 // linha de uma equipe servida pelos tios: badge do EJC + equipe + coordenação
 function LinhaEquipeTio({ r }){
   return <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"10px 14px"}}>
-    {r.ejc && <Badge tone="brand">{r.ejc}</Badge>}
+    {(r.ano||r.ejc) && <Badge tone="brand">{r.ano||r.ejc}</Badge>}
     <span style={{flex:1,fontWeight:600,fontSize:14,minWidth:100}}>{r.eq}</span>
     {r.coord && <Badge tone="yellow" dot>Coordenação</Badge>}
   </div>;
@@ -2098,7 +2100,7 @@ function SaudeTioBloco({ f, pref }){
 }
 
 function TioDetailBody({ f }){
-  const equipes=[...((f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[])].sort((a,b)=>(numeroEdicao(b.ejc)||0)-(numeroEdicao(a.ejc)||0));
+  const equipes=[...((f.fezCalifornia===true?f.equipesEjc:f.equipesCalifornia)||[])].sort((a,b)=>(numeroEdicao(b.ano||b.ejc)||0)-(numeroEdicao(a.ano||a.ejc)||0));
   return <>
     <Section title="Tia e Tio" icon="heart-handshake" color="var(--cat-terracotta)">
       <div style={parGrid}>
@@ -2648,7 +2650,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
 function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
   const [f,setF]=useState({
     tiaTelPrincipal:false, tioTelPrincipal:false,
-    matrimonio:null, fezCalifornia:null, equipesEjc:[], equipesCalifornia:[],
+    matrimonio:null, fezCalifornia:null, equipesEjc:[], equipesCalifornia:[], naoServiAnosTio:[],
     musico:null, musicoQuem:"", instrumentos:[],
     tiaRestrFisica:"", tiaRestrFisicaOutra:"", tiaRestrAlim:"", tiaRestrAlimOutra:"", tiaNeuro:[], tiaNeuroOutra:"",
     tioRestrFisica:"", tioRestrFisicaOutra:"", tioRestrAlim:"", tioRestrAlimOutra:"", tioNeuro:[], tioNeuroOutra:"",
@@ -2658,7 +2660,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
   const set=(k,v)=>{ setF(s=>({...s,[k]:v})); setErrors(e=>{ if(!e[k]) return e; const n={...e}; delete n[k]; return n; }); };
   const [errors,setErrors]=useState({});
   const [busy,setBusy]=useState(false);
-  const { ejcListSimples } = useStore();
+  const { ejcListSimples, ejcYears } = useStore();
   useLucide();
 
   const handleSave=async ()=>{
@@ -2685,7 +2687,6 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
     if(f.fezCalifornia!==true && f.fezCalifornia!==false) errs.fezCalifornia="Responda se fez ECC no Califórnia.";
     else if(f.fezCalifornia===true){
       if(!f.qualFez) errs.qualFez="Selecione qual ECC fez.";
-      if(!(f.equipesEjc||[]).length) errs.equipesEjc="Adicione ao menos uma equipe que serviu.";
     }
     if(!f.tiaRestrFisica) errs.tiaRestrFisica="Informe se há restrição física.";
     if(!f.tiaRestrAlim) errs.tiaRestrAlim="Informe restrição alimentar.";
@@ -2787,13 +2788,13 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
         </Field>
         {f.fezCalifornia===true && <div style={{marginTop:16}}>
           <Field label="Qual fez?" required error={errors.qualFez}>
-            <select value={f.qualFez||""} onChange={e=>{ set("qualFez",e.target.value); set("equipesEjc",[]); }} style={{width:"100%",border:"none",background:errors.qualFez?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+            <select value={f.qualFez||""} onChange={e=>{ set("qualFez",e.target.value); set("equipesEjc",[]); set("naoServiAnosTio",[]); }} style={{width:"100%",border:"none",background:errors.qualFez?"var(--danger-soft)":"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
               <option value="">Selecione...</option>{ECC_LIST.map(y=><option key={y}>{y}</option>)}
             </select>
           </Field>
           <div style={{marginTop:16}}>
-            <Field label="Equipes que serviu no EJC" required error={errors.equipesEjc} hint={(f.qualFez?("Até "+maxEquipesEcc(f.qualFez)+" equipe"+(maxEquipesEcc(f.qualFez)>1?"s":""))+" — ":"Selecione o ECC primeiro — ")+"EJC, equipe e se foi coordenação"}>
-              <RepeatEquipeEcc value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} max={f.qualFez?maxEquipesEcc(f.qualFez):0} eccOptions={ejcListSimples}/>
+            <Field label="Equipes que serviu no EJC" hint="Escolha a equipe de cada ano em que serviu — a partir do ano seguinte ao seu ECC. Pode adicionar quantos anos quiser; deixe em branco os anos que não serviu.">
+              <EquipesPorAno value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} naoServi={f.naoServiAnosTio} onNaoServi={v=>set("naoServiAnosTio",v)} years={anosDepoisDoEjc(f.qualFez,ejcYears)} needsYear={!f.qualFez}/>
             </Field>
           </div>
         </div>}
@@ -3269,7 +3270,7 @@ function historicoServicoEjc(jovens, tios){
   (tios||[]).forEach(t=>{
     const f=t.ficha; if(!f) return;
     [...(f.equipesEjc||[]),...(f.equipesCalifornia||[])].forEach(r=>{
-      const edicao=normalizaEdicaoEjc(r.ejc); if(!edicao||!r.eq) return;
+      const edicao=normalizaEdicaoEjc(r.ano||r.ejc); if(!edicao||!r.eq) return;
       out.push({ person:t, isTio:true, edicao, eq:r.eq, coord:!!r.coord });
     });
   });
