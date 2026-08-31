@@ -2540,7 +2540,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
             </Field>
           </div>
           <div style={{marginTop:16}}>
-            <Field label="Nome do casal de tio"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
+            <Field label="Nome do casal de tios que te buscou"><Input value={f.casalTio||""} onChange={e=>set("casalTio",e.target.value)} placeholder="Ex: Carlos e Rita"/></Field>
           </div>
         </div>}
         {f.fezCalifornia===false && <div style={{marginTop:16}}>
