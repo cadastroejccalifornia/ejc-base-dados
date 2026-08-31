@@ -21,9 +21,11 @@ create index if not exists presencas_evento_idx on presencas(evento_id);
 
 alter table presencas enable row level security;
 
--- LEITURA: qualquer pessoa logada (dirigente OU membro)
+-- LEITURA: só dirigentes (a lista de presença tem nome + evento + equipe de todos;
+-- membro comum não deve ler. Só dirigentes usam a presença no app.)
 drop policy if exists "autenticados veem presencas" on presencas;
-create policy "autenticados veem presencas" on presencas for select using (auth.uid() is not null);
+drop policy if exists "dirigentes veem presencas" on presencas;
+create policy "dirigentes veem presencas" on presencas for select using (is_dirigente());
 
 -- ESCRITA: só dirigentes criam / editam / removem presença
 drop policy if exists "dirigentes inserem presencas" on presencas;
