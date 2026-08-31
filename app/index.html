@@ -609,7 +609,7 @@ function AniversariosCard({ onAbrir }){
 function EventosCard({ onAbrir }){
   const { eventos } = useStore();
   const hojeStr=ymd(new Date());
-  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort(cmpDataHora).slice(0,5);
+  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort(cmpDataHora).slice(0,3);
   const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
   return <Card title="📅 Próximos eventos" subtitle={proximos.length?"No calendário do movimento":"Calendário do movimento"}
     action={<button onClick={onAbrir} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver calendário<Icon name="chevron-right" size={15}/></button>}>
