@@ -102,6 +102,8 @@ const MONTAGEM_TABS=["Coordenação Geral","Sala","Compras","Acolhida","Cafezinh
 const EJC_YEARS=["XXXI EJC (2026)","XXX EJC (2025)","XXIX EJC (2024)","XXVIII EJC (2023)","XXVII EJC (2022)","XXVI EJC (2019)","XXV EJC (2018)","XXIV EJC (2017)","XXIII EJC (2016)","XXII EJC (2015)","XXI EJC (2014)","XX EJC (2013)","XIX EJC (2012)","XVIII EJC (2011)","XVII EJC (2010)","XVI EJC (2009)","XV EJC (2008)","XIV EJC (2007)","XIII EJC (2006)","XII EJC (2005)","XI EJC (2004)","X EJC (2003)","IX EJC (2002)","VIII EJC (2001)","VII EJC (2000)","VI EJC (1999)","V EJC (1998)","IV EJC (1997)","III EJC (1996)","II EJC (1995)","I EJC (1993)"];
 // extrai o ano numérico de um item do EJC_YEARS, ex: "XXVIII EJC (2023)" -> 2023
 const anoDoEjc = s => { const m=/\((\d{4})\)/.exec(s||""); return m?parseInt(m[1]):null; };
+// ordena eventos por data e depois por horário (evento sem hora vem primeiro no dia)
+const cmpDataHora = (a,b) => (a.data||"").localeCompare(b.data||"") || (a.hora||"").localeCompare(b.hora||"");
 
 // círculos do EJC no Califórnia (com a cor da bolinha)
 const CIRCULOS=["Amarelo","Verde","Vermelho","Laranja","Azul","Rosa","Não lembro"];
@@ -406,12 +408,12 @@ function StoreProvider({ user, children }){
     },
     addEvento: async (ev)=>{
       const { data, error } = await supabase.from("eventos").insert({ titulo:ev.titulo, data:ev.data, hora:ev.hora||null, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).select().single();
-      if(!error) setEventos(l=>[...l,rowToEvento(data)].sort((a,b)=>a.data.localeCompare(b.data)));
+      if(!error) setEventos(l=>[...l,rowToEvento(data)].sort(cmpDataHora));
       return { data: data?rowToEvento(data):null, error };
     },
     updateEvento: async (id,ev)=>{
       const { data, error } = await supabase.from("eventos").update({ titulo:ev.titulo, data:ev.data, hora:ev.hora||null, descricao:ev.descricao||null, responsabilidade:ev.responsabilidade||null }).eq("id",id).select().single();
-      if(!error) setEventos(l=>l.map(e=>e.id===id?rowToEvento(data):e).sort((a,b)=>a.data.localeCompare(b.data)));
+      if(!error) setEventos(l=>l.map(e=>e.id===id?rowToEvento(data):e).sort(cmpDataHora));
       return { data: data?rowToEvento(data):null, error };
     },
     removeEvento: async (id)=>{
@@ -607,7 +609,7 @@ function AniversariosCard({ onAbrir }){
 function EventosCard({ onAbrir }){
   const { eventos } = useStore();
   const hojeStr=ymd(new Date());
-  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort((a,b)=>a.data.localeCompare(b.data)).slice(0,5);
+  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort(cmpDataHora).slice(0,5);
   const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
   return <Card title="📅 Próximos eventos" subtitle={proximos.length?"No calendário do movimento":"Calendário do movimento"}
     action={<button onClick={onAbrir} style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--brand-brown)",fontWeight:700,fontSize:13,fontFamily:"var(--font-sans)",display:"inline-flex",alignItems:"center",gap:5}}>Ver calendário<Icon name="chevron-right" size={15}/></button>}>
@@ -635,7 +637,7 @@ function EventosResumoMembro(){
   const { eventos } = useStore();
   const hojeStr=ymd(new Date());
   const diaSemanaDe=ds=>DIAS_ABREV[new Date(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)).getDay()];
-  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort((a,b)=>a.data.localeCompare(b.data));
+  const proximos=(eventos||[]).filter(e=>e.data&&e.data>=hojeStr).sort(cmpDataHora);
   const grupos=[];
   proximos.forEach(e=>{ const chave=e.data.slice(0,7); let g=grupos.find(x=>x.chave===chave); if(!g){ g={chave,label:MESES_PT[+chave.slice(5,7)-1]+" "+chave.slice(0,4),itens:[]}; grupos.push(g); } g.itens.push(e); });
   return <Card title="📅 Próximos eventos" subtitle="Calendário do movimento" style={{marginBottom:18}}>
@@ -818,7 +820,7 @@ function Calendario({ readonly, compacto }){
   const diasNoMes=new Date(ano,mes+1,0).getDate();
   const prefixoMes=ano+"-"+pad2(mes+1);
   const porDia={}; eventos.forEach(e=>{ if(e.data){ (porDia[e.data]=porDia[e.data]||[]).push(e); } });
-  const doMes=eventos.filter(e=>e.data&&e.data.slice(0,7)===prefixoMes).sort((a,b)=>a.data.localeCompare(b.data));
+  const doMes=eventos.filter(e=>e.data&&e.data.slice(0,7)===prefixoMes).sort(cmpDataHora);
   const hojeStr=ymd(new Date());
   const cells=[]; for(let i=0;i<primeiroDiaSemana;i++) cells.push(null); for(let d=1;d<=diasNoMes;d++) cells.push(d);
   const irMes=delta=>setRef(new Date(ano,mes+delta,1));
@@ -905,7 +907,7 @@ function Eventos({ onOpenPerson }){
   const evento = selId ? eventos.find(e=>e.id===selId) : null;
   if(evento) return <ChamadaEvento evento={evento} onVoltar={()=>setSelId(null)} onOpenPerson={onOpenPerson}/>;
 
-  const ordenados=[...eventos].sort((a,b)=>{ const af=a.data>=hojeStr, bf=b.data>=hojeStr; if(af!==bf) return af?-1:1; return af ? a.data.localeCompare(b.data) : b.data.localeCompare(a.data); });
+  const ordenados=[...eventos].sort((a,b)=>{ const af=a.data>=hojeStr, bf=b.data>=hojeStr; if(af!==bf) return af?-1:1; return af ? cmpDataHora(a,b) : -cmpDataHora(a,b); });
   return <div>
     <Header title="Eventos" sub="Abra um evento e faça a lista de presença"/>
     <Card>
