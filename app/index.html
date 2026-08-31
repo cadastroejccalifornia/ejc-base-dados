@@ -2794,7 +2794,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipes que serviu no EJC" hint="Escolha a equipe de cada ano em que serviu — a partir do ano seguinte ao seu ECC. Pode adicionar quantos anos quiser; deixe em branco os anos que não serviu.">
-              <EquipesPorAno value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} naoServi={f.naoServiAnosTio} onNaoServi={v=>set("naoServiAnosTio",v)} years={anosDepoisDoEjc(f.qualFez,ejcYears)} needsYear={!f.qualFez}/>
+              <EquipesPorAno value={f.equipesEjc} onChange={v=>set("equipesEjc",v)} naoServi={f.naoServiAnosTio} onNaoServi={v=>set("naoServiAnosTio",v)} years={anosDepoisDoEjc(f.qualFez,ejcYears)} needsYear={!f.qualFez} naoLembro/>
             </Field>
           </div>
         </div>}
@@ -2879,7 +2879,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
 const anosDepoisDoEjc = (anoEjcStr,ejcYears) => { const a=anoDoEjc(anoEjcStr); return a ? ejcYears.filter(y=>anoDoEjc(y)>a) : []; };
 
 // mostra uma linha por ano disponível; em cada ano a pessoa escolhe a equipe (dropdown) e se foi coordenador
-function EquipesPorAno({ value, onChange, naoServi, onNaoServi, years, needsYear }){
+function EquipesPorAno({ value, onChange, naoServi, onNaoServi, years, needsYear, naoLembro }){
   const byAno={}; (value||[]).forEach(r=>{ byAno[r.ano]=r; });
   const naoSet=new Set((naoServi||[]).map(String));
   const setSel=(ano,val)=>{
@@ -2908,6 +2908,7 @@ function EquipesPorAno({ value, onChange, naoServi, onNaoServi, years, needsYear
           <select value={curVal} onChange={e=>setSel(y,e.target.value)} style={selStyle}>
             <option value="">Selecione...</option>
             <option value="__nao__">Não servi neste ano</option>
+            {naoLembro && <option value="Não lembro">Não lembro a equipe</option>}
             {EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
           </select>
         </div>
