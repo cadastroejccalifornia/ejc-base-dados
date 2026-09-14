@@ -2178,6 +2178,8 @@ const RESTR_FISICA=["Nenhuma restrição física","Dificuldade de locomoção","
 const RESTR_ALIM=["Nenhuma restrição alimentar","Intolerância à lactose","Intolerância ao glúten","Vegetariano","Vegano","Diabete (restrição de açúcar)","Outra"];
 const NEURO=["Nenhuma condição","Transtorno do Espectro Autista (TEA)","TDAH","Ansiedade / Síndrome do pânico","Depressão","Fobia Social","Prefiro não informar","Outra"];
 const EJC_TEAMS_ALL=["Acolhida","Cafezinho","Cozinha","Liturgia Interna","Liturgia Externa","Secretaria","Compras","Ordem e Limpeza","Visitação Externa","Tios Circulistas","Moita","Sala","Coordenação Geral","Recepção ao Palestrante"];
+// mesma lista + Garçom — usada só no formulário do jovem (não fez Califórnia), quando informa a equipe que serviu
+const EJC_TEAMS_COM_GARCOM=[...EJC_TEAMS_ALL,"Garçom"];
 
 /* ---- máscaras e validação ---- */
 const onlyDigits = s => (s||"").replace(/\D/g,"");
@@ -2553,7 +2555,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
           </Field>
           <div style={{marginTop:16}}>
             <Field label="Equipe que serviu no Califórnia" hint="Adicione o EJC do Califórnia, a equipe e se foi coordenação">
-              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} eccOptions={ejcListSimples}/>
+              <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} eccOptions={ejcListSimples} equipeOptions={EJC_TEAMS_COM_GARCOM}/>
             </Field>
           </div>
           <label style={{display:"inline-flex",alignItems:"center",gap:9,fontSize:14,marginTop:16,cursor:"pointer"}}>
@@ -2962,7 +2964,7 @@ function RepeatServiuFora({ value, onChange }){
 }
 
 // lista repetível EJC/ECC | Equipe | Coordenação — usada nas equipes que os tios serviram
-function RepeatEquipeEcc({ value, onChange, max, eccOptions }){
+function RepeatEquipeEcc({ value, onChange, max, eccOptions, equipeOptions=EJC_TEAMS_ALL }){
   const [ejc,setEjc]=useState("");
   const [eq,setEq]=useState("");
   const [coordNovo,setCoordNovo]=useState(false);
@@ -2990,7 +2992,7 @@ function RepeatEquipeEcc({ value, onChange, max, eccOptions }){
             <option value="">EJC...</option>{eccOptions.map(t=><option key={t}>{t}</option>)}
           </select>
           <select value={eq} onChange={e=>setEq(e.target.value)} style={selStyle}>
-            <option value="">Equipe...</option>{EJC_TEAMS_ALL.map(t=><option key={t}>{t}</option>)}
+            <option value="">Equipe...</option>{equipeOptions.map(t=><option key={t}>{t}</option>)}
           </select>
           <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text-2)",cursor:"pointer",flex:"0 0 auto"}}>
             <input type="checkbox" checked={coordNovo} onChange={e=>setCoordNovo(e.target.checked)}/> Coordenação
