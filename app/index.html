@@ -1945,11 +1945,22 @@ function PersonDetail({ person, onClose, onEdit, onDelete }){
 function PersonDetailBody({ person }){
   const f=person.ficha;
   const isTio=person.mjc===undefined;
+  const [zoom,setZoom]=useState(false); // foto ampliada (lightbox)
+  useEffect(()=>{
+    if(!zoom) return;
+    const onKey=e=>{ if(e.key==="Escape") setZoom(false); };
+    window.addEventListener("keydown",onKey);
+    return ()=>window.removeEventListener("keydown",onKey);
+  },[zoom]);
   return <>
       {/* Cabeçalho com avatar e contatos */}
       <Card style={{marginBottom:18}}>
         <div style={{display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
-          <Avatar src={person.foto} name={person.n} size={72}/>
+          {person.foto
+            ? <button type="button" onClick={()=>setZoom(true)} title="Ampliar foto" aria-label="Ampliar foto" style={{border:"none",background:"transparent",padding:0,margin:0,cursor:"zoom-in",borderRadius:"50%",lineHeight:0}}>
+                <Avatar src={person.foto} name={person.n} size={72}/>
+              </button>
+            : <Avatar src={person.foto} name={person.n} size={72}/>}
           <div style={{flex:1,minWidth:200}}>
             <div style={{fontSize:20,fontWeight:800,letterSpacing:"-.01em"}}>{person.n}</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
@@ -2073,6 +2084,14 @@ function PersonDetailBody({ person }){
           </div>
         </Section>
       </>}
+
+      {/* Lightbox: foto ampliada ao clicar no avatar */}
+      {zoom && person.foto && <div onClick={()=>setZoom(false)} style={{position:"fixed",inset:0,zIndex:80,background:"rgba(20,16,12,.82)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:"zoom-out"}}>
+        <span style={{position:"absolute",top:16,right:16}} onClick={e=>e.stopPropagation()}>
+          <IconButton label="Fechar" variant="dark" onClick={()=>setZoom(false)}><Icon name="x" size={20}/></IconButton>
+        </span>
+        <img src={person.foto} alt={person.n} onClick={e=>e.stopPropagation()} style={{maxWidth:"92vw",maxHeight:"88vh",objectFit:"contain",borderRadius:"var(--r-lg)",boxShadow:"var(--shadow-lg)"}}/>
+      </div>}
   </>;
 }
 
