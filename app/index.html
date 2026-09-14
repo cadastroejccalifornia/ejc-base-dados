@@ -2512,7 +2512,7 @@ function FichaForm({ onClose, onSave, initial, overline, title, saveLabel, selfI
       {/* 3. Família */}
       <Section title="Família" icon="users" color="var(--cat-terracotta)">
         <Field label="Pai e mãe são casados ou separados?">
-          <ChipGroup options={["Casados","Separados","Outro"]} value={f.paisEstado} onChange={v=>set("paisEstado",v)}/>
+          <ChipGroup options={["Casados","União estável","Separados","Outro"]} value={f.paisEstado} onChange={v=>set("paisEstado",v)}/>
         </Field>
         <div style={{marginTop:18,fontSize:13,fontWeight:700,color:"var(--text-2)",textTransform:"uppercase",letterSpacing:".04em"}}>Pais</div>
         <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:16}}>
@@ -3043,7 +3043,7 @@ const CAMPO_CATALOGO=[
   {id:"insta",label:"Instagram",type:"texto"},
   {id:"endereco",label:"Endereço completo",type:"texto"},
   {id:"sacramentos",label:"Sacramentos",type:"multipla",opcoes:SACRAMENTOS},
-  {id:"pais",label:"Estado dos pais",type:"unica",opcoes:["Casados","Separados","Outro"]},
+  {id:"pais",label:"Estado dos pais",type:"unica",opcoes:["Casados","União estável","Separados","Outro"]},
   {id:"fezCalifornia",label:"Fez EJC no Califórnia?",type:"simnao"},
   {id:"garcom",label:"Já foi garçom?",type:"simnao"},
   {id:"serviuFora",label:"Já serviu fora?",type:"simnao"},
