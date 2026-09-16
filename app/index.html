@@ -1826,6 +1826,7 @@ function exportarFichaPDF(person){
         row("Fez ECC no Califórnia?",yn(f.fezCalifornia))+
         (f.fezCalifornia===true?row("Qual fez?",f.qualFez):"")+
         (f.fezCalifornia===false?row("Qual seu ECC?",f.qualEcc):"")+equipesTioHTML),
+      section("EJC como jovem", f.fezEjcJovem!=null?(row("Já fez o EJC como jovem?",yn(f.fezEjcJovem))+(f.fezEjcJovem===true?row("Qual EJC fez?",f.qualEjcJovem):"")):""),
       section("Música",row("Músico?",f.musico?("Sim — "+(f.musicoQuem||"—")):yn(f.musico))+(f.musico===true?row("Instrumentos",(f.instrumentos||[]).join(", ")):"")),
       section("Saúde e restrições da tia",
         row("Restrição física",f.tiaRestrFisica==="Outra"?(f.tiaRestrFisicaOutra||"Outra"):f.tiaRestrFisica)+
@@ -2157,6 +2158,13 @@ function TioDetailBody({ f }){
         </div>
       </div>}
     </Section>
+
+    {f.fezEjcJovem!=null && <Section title="EJC como jovem" icon="user-check" color="var(--cat-blue)">
+      <div style={rowGrid}>
+        <InfoRow label="Já fez o EJC como jovem?" value={f.fezEjcJovem===true?"Sim":"Não"}/>
+        {f.fezEjcJovem===true && <InfoRow label="Qual EJC fez?" value={f.qualEjcJovem}/>}
+      </div>
+    </Section>}
 
     {f.musico!=null && <Section title="Música" icon="music" color="var(--cat-plum)">
       <div style={{marginBottom:(f.musico&&f.instrumentos&&f.instrumentos.length)?12:0}}>
@@ -2674,6 +2682,7 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
   const [f,setF]=useState({
     tiaTelPrincipal:false, tioTelPrincipal:false,
     matrimonio:null, fezCalifornia:null, equipesEjc:[], equipesCalifornia:[], naoServiAnosTio:[],
+    fezEjcJovem:null, qualEjcJovem:"",
     musico:null, musicoQuem:"", instrumentos:[],
     tiaRestrFisica:"", tiaRestrFisicaOutra:"", tiaRestrAlim:"", tiaRestrAlimOutra:"", tiaNeuro:[], tiaNeuroOutra:"",
     tioRestrFisica:"", tioRestrFisicaOutra:"", tioRestrAlim:"", tioRestrAlimOutra:"", tioNeuro:[], tioNeuroOutra:"",
@@ -2828,6 +2837,20 @@ function TiosForm({ onClose, onSave, initial, overline, title, saveLabel }){
               <RepeatEquipeEcc value={f.equipesCalifornia} onChange={v=>set("equipesCalifornia",v)} max={2} eccOptions={ejcListSimples}/>
             </Field>
           </div>
+        </div>}
+      </Section>
+
+      {/* 2b. EJC como jovem — só histórico */}
+      <Section title="EJC como jovem" icon="user-check" color="var(--cat-blue)" desc="Só para histórico — se já fez o EJC como jovem">
+        <Field label="Já fez o EJC como jovem?">
+          <YesNo value={f.fezEjcJovem} onChange={v=>set("fezEjcJovem",v)}/>
+        </Field>
+        {f.fezEjcJovem===true && <div style={{marginTop:16}}>
+          <Field label="Qual EJC você fez?">
+            <select value={f.qualEjcJovem||""} onChange={e=>set("qualEjcJovem",e.target.value)} style={{width:"100%",border:"none",background:"var(--surface-2)",borderRadius:"var(--r-md)",padding:"12px 14px",fontSize:14,fontFamily:"var(--font-sans)",color:"var(--text)",outline:"none"}}>
+              <option value="">Selecione...</option>{ejcListSimples.map(y=><option key={y}>{y}</option>)}
+            </select>
+          </Field>
         </div>}
       </Section>
 
